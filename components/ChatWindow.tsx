@@ -55,6 +55,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleCancelResponse = () => {
     setIsCancelling(true);
     geminiService.cancelCurrentRequest();
+    
+    // 불완전한 메시지 제거
+    setMessages(prev => {
+      const newMessages = [...prev];
+      const lastMessage = newMessages[newMessages.length - 1];
+      
+      // 마지막 메시지가 MODEL이고 비어있거나 매우 짧으면 제거
+      if (lastMessage && 
+          lastMessage.role === Role.MODEL && 
+          (lastMessage.content === '' || lastMessage.content.length < 10)) {
+        newMessages.pop();
+        console.log('불완전한 메시지를 제거했습니다.');
+      }
+      
+      return newMessages;
+    });
+    
     setIsProcessing(false);
     setIsCancelling(false);
   };
@@ -74,8 +91,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendMessage = async (content: string) => {
     if (isProcessing) return;
 
+    // 고유한 요청 ID 생성
+    const requestId = Date.now().toString();
+    
     const userMessage: MessageType = {
-      id: Date.now().toString(),
+      id: requestId,
       role: Role.USER,
       content,
       timestamp: new Date(),
@@ -88,7 +108,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       // 스트리밍 응답이 지원되는 경우 스트리밍 사용
       if (onStreamingMessage) {
         const modelMessage: MessageType = {
-          id: (Date.now() + 1).toString(),
+          id: `${requestId}-model`,
           role: Role.MODEL,
           content: '',
           timestamp: new Date(),
@@ -102,6 +122,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         for await (const chunk of stream) {
           // 중지 요청이 있으면 루프 종료
           if (isCancelling) {
+            console.log('사용자에 의해 스트리밍이 중단되었습니다.');
             break;
           }
           
@@ -109,7 +130,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           setMessages(prev => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage.role === Role.MODEL) {
+            // 요청 ID가 일치하는 메시지만 업데이트
+            if (lastMessage.role === Role.MODEL && lastMessage.id === `${requestId}-model`) {
               lastMessage.content = fullResponse;
             }
             return newMessages;
@@ -120,7 +142,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         const response = await onSendMessage(content);
         
         const modelMessage: MessageType = {
-          id: (Date.now() + 1).toString(),
+          id: `${requestId}-model`,
           role: Role.MODEL,
           content: response,
           timestamp: new Date(),
@@ -135,7 +157,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         // 중지된 경우 메시지 추가하지 않음
       } else {
         const errorMessage: MessageType = {
-          id: (Date.now() + 1).toString(),
+          id: `${requestId}-error`,
           role: Role.MODEL,
           content: `오류가 발생했습니다: ${(error as Error).message}`,
           timestamp: new Date(),
@@ -175,7 +197,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   </p>
                   <button
                     onClick={handleCancelResponse}
-                    className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors"
+                    className="px-3 py-1 bg-brand-secondary text-brand-text-primary rounded text-xs hover:bg-opacity-80 transition-colors"
                     title="ESC 키로도 중지할 수 있습니다"
                   >
                     중지 (ESC)

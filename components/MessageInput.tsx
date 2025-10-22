@@ -50,7 +50,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
         <button
           type="button"
           onClick={onCancelMessage}
-          className="px-3 py-2 md:px-4 md:py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center"
+          className="px-3 py-2 md:px-4 md:py-3 bg-brand-secondary text-brand-text-primary rounded-lg hover:bg-opacity-80 transition-colors flex items-center justify-center"
           title="답변 중지 (ESC 키도 사용 가능)"
         >
           ⏹️ 중지
