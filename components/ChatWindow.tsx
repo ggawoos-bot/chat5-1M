@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message as MessageType, Role } from '../types';
 import Message from './Message';
 import MessageInput from './MessageInput';
+import { geminiService } from '../services/geminiService';
 
 interface ChatWindowProps {
   onSendMessage: (message: string) => Promise<string>;
@@ -22,6 +23,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -45,8 +47,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (resetTrigger !== undefined && resetTrigger > 0) {
       setMessages([]);
       setIsProcessing(false);
+      setIsCancelling(false);
     }
   }, [resetTrigger]);
+
+  // 답변 중지 함수
+  const handleCancelResponse = () => {
+    setIsCancelling(true);
+    geminiService.cancelCurrentRequest();
+    setIsProcessing(false);
+    setIsCancelling(false);
+  };
+
+  // ESC 키로 답변 중지
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isProcessing) {
+        handleCancelResponse();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isProcessing]);
 
   const handleSendMessage = async (content: string) => {
     if (isProcessing) return;
@@ -77,6 +100,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         let fullResponse = '';
 
         for await (const chunk of stream) {
+          // 중지 요청이 있으면 루프 종료
+          if (isCancelling) {
+            break;
+          }
+          
           fullResponse += chunk;
           setMessages(prev => {
             const newMessages = [...prev];
@@ -101,16 +129,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setMessages(prev => [...prev, modelMessage]);
       }
     } catch (error) {
-      const errorMessage: MessageType = {
-        id: (Date.now() + 1).toString(),
-        role: Role.MODEL,
-        content: `오류가 발생했습니다: ${(error as Error).message}`,
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
+      // AbortError는 정상적인 취소로 처리
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('사용자에 의해 요청이 취소되었습니다.');
+        // 중지된 경우 메시지 추가하지 않음
+      } else {
+        const errorMessage: MessageType = {
+          id: (Date.now() + 1).toString(),
+          role: Role.MODEL,
+          content: `오류가 발생했습니다: ${(error as Error).message}`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsProcessing(false);
+      setIsCancelling(false);
     }
   };
 
@@ -135,7 +169,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
             <div className="flex-1">
               <div className="bg-brand-surface border border-brand-secondary rounded-lg p-2 md:p-3">
-                <p className="text-brand-text-secondary text-sm md:text-base">답변을 생성하고 있습니다...</p>
+                <div className="flex justify-between items-center">
+                  <p className="text-brand-text-secondary text-sm md:text-base">
+                    답변을 생성하고 있습니다...
+                  </p>
+                  <button
+                    onClick={handleCancelResponse}
+                    className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200 transition-colors"
+                    title="ESC 키로도 중지할 수 있습니다"
+                  >
+                    중지 (ESC)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -146,7 +191,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       
       <MessageInput
         onSendMessage={handleSendMessage}
+        onCancelMessage={handleCancelResponse}
         disabled={isProcessing || isLoading}
+        isProcessing={isProcessing}
         placeholder={placeholder}
       />
     </div>
