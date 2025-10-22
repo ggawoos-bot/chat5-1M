@@ -13,6 +13,7 @@ function App() {
   const [showCompressionStats, setShowCompressionStats] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
+  const [chatKey, setChatKey] = useState(0); // ChatWindow 리렌더링을 위한 키
 
   // 앱 시작 시 PDF 소스 로드 (압축 기능 포함 + 진행률 표시)
   useEffect(() => {
@@ -69,7 +70,10 @@ function App() {
       // 2. 메시지 목록 초기화 (ChatWindow에서 관리하는 메시지들)
       setMessages([]);
       
-      // 3. 소스 목록을 다시 로드하여 최신 상태 유지
+      // 3. ChatWindow 강제 리렌더링을 위한 키 변경
+      setChatKey(prev => prev + 1);
+      
+      // 4. 소스 목록을 다시 로드하여 최신 상태 유지
       await geminiService.initializeWithPdfSources();
       setSources(geminiService.getSources());
       
@@ -194,9 +198,11 @@ function App() {
           {/* 메인 채팅 영역 */}
           <div className="flex-1 flex flex-col min-w-0">
             <ChatWindow
+              key={chatKey} // 키를 사용하여 강제 리렌더링 제어
               onSendMessage={handleSendMessage}
               onStreamingMessage={handleStreamingMessage}
               onResetMessages={() => setMessages([])}
+              resetTrigger={chatKey} // 리셋 트리거 전달
               placeholder="금연사업 관련 문의사항을 입력하세요..."
             />
           </div>

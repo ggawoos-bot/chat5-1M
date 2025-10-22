@@ -7,6 +7,7 @@ interface ChatWindowProps {
   onSendMessage: (message: string) => Promise<string>;
   onStreamingMessage?: (message: string) => Promise<AsyncGenerator<string, void, unknown>>;
   onResetMessages?: () => void;
+  resetTrigger?: number; // 리셋 트리거 (키 값)
   isLoading?: boolean;
   placeholder?: string;
 }
@@ -15,6 +16,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendMessage, 
   onStreamingMessage,
   onResetMessages,
+  resetTrigger,
   isLoading = false, 
   placeholder 
 }) => {
@@ -37,6 +39,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsProcessing(false);
     }
   }, [onResetMessages]);
+
+  // resetTrigger가 변경되면 메시지 초기화
+  useEffect(() => {
+    if (resetTrigger !== undefined && resetTrigger > 0) {
+      setMessages([]);
+      setIsProcessing(false);
+    }
+  }, [resetTrigger]);
 
   const handleSendMessage = async (content: string) => {
     if (isProcessing) return;
