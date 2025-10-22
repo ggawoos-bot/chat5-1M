@@ -1,0 +1,89 @@
+name: Process PDFs
+
+on:
+  repository_dispatch:
+    types: [process-pdfs]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  process-pdfs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Process PDFs with custom settings
+      run: |
+        echo "Processing PDFs with settings:"
+        echo "Chunk Size: ${{ github.event.client_payload.chunkSize || 2000 }}"
+        echo "Overlap Size: ${{ github.event.client_payload.overlapSize || 200 }}"
+        
+        # 환경변수 설정
+        export CHUNK_SIZE=${{ github.event.client_payload.chunkSize || 2000 }}
+        export OVERLAP_SIZE=${{ github.event.client_payload.overlapSize || 200 }}
+        
+        # PDF 처리 스크립트 실행
+        node scripts/process-all-pdfs-quality.js
+      env:
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        
+    - name: Check for changes
+      id: changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changes=true" >> $GITHUB_OUTPUT
+        else
+          echo "changes=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Commit and push changes
+      if: steps.changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add public/data/processed-pdfs.json
+        git add dist/data/processed-pdfs.json
+        git commit -m "Update processed-pdfs.json [skip ci]"
+        git push
+        
+    - name: Build and deploy
+      if: steps.changes.outputs.changes == 'true'
+      run: |
+        npm run build
+      env:
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        
+    - name: Setup Pages
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/configure-pages@v4
+      
+    - name: Upload artifact
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./dist
+        
+    - name: Deploy to GitHub Pages
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/deploy-pages@v4
+      
+    - name: Notify completion
+      run: |
+        echo "PDF processing completed successfully!"
+        echo "Chunk Size: ${{ github.event.client_payload.chunkSize || 2000 }}"
+        echo "Overlap Size: ${{ github.event.client_payload.overlapSize || 200 }}"
+        echo "Changes made: ${{ steps.changes.outputs.changes }}"

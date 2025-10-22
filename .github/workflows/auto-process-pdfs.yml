@@ -1,0 +1,134 @@
+# DEPRECATED: This workflow is replaced by ci-cd.yml
+# All content below is commented out to prevent YAML syntax errors
+
+# name: Auto Process PDFs
+
+# on:
+#   push:
+#     paths:
+#       - 'public/pdf/**'
+#       - 'public/pdf/manifest.json'
+#   workflow_dispatch:
+#     inputs:
+#       chunkSize:
+#         description: '청크 크기 (문자 수)'
+#         required: true
+#         default: '2000'
+#         type: string
+#       overlapSize:
+#         description: '오버랩 크기 (문자 수)'
+#         required: true
+#         default: '200'
+#         type: string
+
+# permissions:
+#   contents: write
+#   pages: write
+#   id-token: write
+
+# jobs:
+#   auto-process-pdfs:
+#     runs-on: ubuntu-latest
+#     
+#     steps:
+#     - name: Checkout
+#       uses: actions/checkout@v4
+#       
+#     - name: Setup Node.js
+#       uses: actions/setup-node@v4
+#       with:
+#         node-version: '18'
+#         cache: 'npm'
+#         
+#     - name: Install dependencies
+#       run: npm install
+#       
+#     - name: Check for PDF changes
+#       id: changes
+#       run: |
+#         if [ -n "$(git status --porcelain public/pdf/)" ]; then
+#           echo "pdf_changes=true" >> $GITHUB_OUTPUT
+#           echo "PDF 파일이 변경되었습니다."
+#         else
+#           echo "pdf_changes=false" >> $GITHUB_OUTPUT
+#           echo "PDF 파일 변경사항이 없습니다."
+#         fi
+#         
+#     - name: Process PDFs with custom settings
+#       if: steps.changes.outputs.pdf_changes == 'true' || github.event_name == 'workflow_dispatch'
+#       run: |
+#         echo "🔧 PDF 처리 설정:"
+#         echo "   청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}"
+#         echo "   오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}"
+#         
+#         # 환경변수 설정
+#         export CHUNK_SIZE=${{ github.event.inputs.chunkSize || 2000 }}
+#         export OVERLAP_SIZE=${{ github.event.inputs.overlapSize || 200 }}
+#         
+#         # PDF 처리 스크립트 실행
+#         echo "🚀 PDF 처리 시작..."
+#         node scripts/process-all-pdfs-quality.js
+#         echo "✅ PDF 처리 완료!"
+#       env:
+#         VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+#         
+#     - name: Check for JSON changes
+#       id: json_changes
+#       run: |
+#         if [ -n "$(git status --porcelain public/data/processed-pdfs.json)" ]; then
+#           echo "json_changes=true" >> $GITHUB_OUTPUT
+#           echo "processed-pdfs.json이 업데이트되었습니다."
+#         else
+#           echo "json_changes=false" >> $GITHUB_OUTPUT
+#           echo "processed-pdfs.json 변경사항이 없습니다."
+#         fi
+#         
+#     - name: Commit and push changes
+#       if: steps.json_changes.outputs.json_changes == 'true'
+#       run: |
+#         git config --local user.email "action@github.com"
+#         git config --local user.name "GitHub Action"
+#         git add public/data/processed-pdfs.json
+#         git commit -m "Auto-update processed-pdfs.json [skip ci]
+
+#         - 청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}자
+#         - 오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}자
+#         - 처리 시간: $(date)"
+#         git push
+#         
+#     - name: Build and deploy
+#       if: steps.json_changes.outputs.json_changes == 'true'
+#       run: |
+#         echo "🏗️ 빌드 시작..."
+#         echo "🔧 PDF 처리 설정:"
+#         echo "   청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}"
+#         echo "   오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}"
+#         npm run build
+#         echo "✅ 빌드 완료!"
+#       env:
+#         VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+#         CHUNK_SIZE: ${{ github.event.inputs.chunkSize || 2000 }}
+#         OVERLAP_SIZE: ${{ github.event.inputs.overlapSize || 200 }}
+#         
+#     - name: Setup Pages
+#       if: steps.json_changes.outputs.json_changes == 'true'
+#       uses: actions/configure-pages@v4
+#       
+#     - name: Upload artifact
+#       if: steps.json_changes.outputs.json_changes == 'true'
+#       uses: actions/upload-pages-artifact@v3
+#       with:
+#         path: ./dist
+#         
+#     - name: Deploy to GitHub Pages
+#       if: steps.json_changes.outputs.json_changes == 'true'
+#       uses: actions/deploy-pages@v4
+#       
+#     - name: Notify completion
+#       run: |
+#         echo "🎉 PDF 자동 처리 완료!"
+#         echo "📊 처리 결과:"
+#         echo "   - PDF 변경사항: ${{ steps.changes.outputs.pdf_changes }}"
+#         echo "   - JSON 업데이트: ${{ steps.json_changes.outputs.json_changes }}"
+#         echo "   - 청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}자"
+#         echo "   - 오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}자"

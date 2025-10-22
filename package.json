@@ -1,0 +1,41 @@
+{
+  "name": "금연사업-지침-문의-chatbot",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "preprocess": "node scripts/simulated-real-pdf-preprocess.js",
+    "preprocess-sample": "node scripts/minimal-preprocess.js",
+    "preprocess-large": "node scripts/generate-large-pdf.js",
+    "preprocess-quality": "node scripts/process-all-pdfs-quality.js",
+    "preprocess-chunked": "node scripts/chunked-pdf-preprocess.js",
+    "prebuild": "npm run preprocess-quality",
+    "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "dependencies": {
+    "@google/genai": "^1.16.0",
+    "canvas": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "jsdom": "^27.0.0",
+    "pdf-parse": "^2.2.2",
+    "pdf-poppler": "^0.2.3",
+    "pdf2pic": "^3.2.0",
+    "pdfjs-dist": "^4.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
