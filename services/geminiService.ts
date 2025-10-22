@@ -228,15 +228,6 @@ export class GeminiService {
     console.warn(`API 키 실패 (${failures + 1}/3): ${usedKey.substring(0, 10)}...`);
     console.error('오류 상세:', error);
     
-    // 503 서버 과부하 오류 처리
-    if (error.message && (error.message.includes('503') || 
-                         error.message.includes('UNAVAILABLE') || 
-                         error.message.includes('overloaded'))) {
-      console.warn('서버 과부하 감지, 다음 키로 전환...');
-      // 서버 과부하는 키 교체로 해결 가능
-      return this.switchToNextKey();
-    }
-    
     // 429 오류 (분당 제한)인 경우 특별 처리
     if (error.message && (error.message.includes('429') || error.message.includes('RATE_LIMIT_EXCEEDED'))) {
       console.log('분당 제한 초과 감지, 다음 키로 전환...');
