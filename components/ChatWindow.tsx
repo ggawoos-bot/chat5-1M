@@ -175,10 +175,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         // 중지된 경우 메시지 추가하지 않음
       } else {
         console.error('응답 생성 중 오류 발생:', error);
+        
+        // 사용자 친화적인 에러 메시지 생성
+        let userFriendlyMessage = '오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+        
+        if (error instanceof Error) {
+          const errorMessage = error.message;
+          
+          // 503 서버 과부하 오류
+          if (errorMessage.includes('503') || 
+              errorMessage.includes('UNAVAILABLE') || 
+              errorMessage.includes('overloaded')) {
+            userFriendlyMessage = '서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해 주세요.';
+          }
+          // 할당량 초과 오류
+          else if (errorMessage.includes('quota') || 
+                   errorMessage.includes('RESOURCE_EXHAUSTED') ||
+                   errorMessage.includes('429')) {
+            userFriendlyMessage = 'API 사용량이 초과되었습니다. 잠시 후 다시 시도해 주세요.';
+          }
+          // 네트워크 오류
+          else if (errorMessage.includes('network') || 
+                   errorMessage.includes('timeout') ||
+                   errorMessage.includes('fetch')) {
+            userFriendlyMessage = '네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.';
+          }
+          // 인증 오류
+          else if (errorMessage.includes('401') || 
+                   errorMessage.includes('UNAUTHENTICATED')) {
+            userFriendlyMessage = '인증에 문제가 있습니다. 관리자에게 문의해 주세요.';
+          }
+        }
+        
         const errorMessage: MessageType = {
           id: `${requestId}-error`,
           role: Role.MODEL,
-          content: `오류가 발생했습니다: ${(error as Error).message}`,
+          content: userFriendlyMessage,
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, errorMessage]);
