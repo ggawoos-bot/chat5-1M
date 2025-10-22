@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message as MessageType, Role } from '../types';
 import Message from './Message';
 import MessageInput from './MessageInput';
-import { geminiService } from '../services/geminiService';
 
 interface ChatWindowProps {
   onSendMessage: (message: string) => Promise<string>;
@@ -23,7 +22,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -47,61 +45,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (resetTrigger !== undefined && resetTrigger > 0) {
       setMessages([]);
       setIsProcessing(false);
-      setIsCancelling(false);
     }
   }, [resetTrigger]);
-
-  // 답변 중지 함수 (개선된 버전)
-  const handleCancelResponse = () => {
-    console.log('사용자에 의해 응답이 중단되었습니다.');
-    setIsCancelling(true);
-    
-    // GeminiService의 요청 중단
-    geminiService.cancelCurrentRequest();
-    
-    // 불완전한 메시지 제거 (개선된 로직)
-    setMessages(prev => {
-      const newMessages = [...prev];
-      const lastMessage = newMessages[newMessages.length - 1];
-      
-      // 마지막 메시지가 MODEL이고 비어있거나 매우 짧으면 제거
-      if (lastMessage && 
-          lastMessage.role === Role.MODEL && 
-          (lastMessage.content === '' || lastMessage.content.length < 10)) {
-        newMessages.pop();
-        console.log('불완전한 메시지를 제거했습니다.');
-      }
-      
-      return newMessages;
-    });
-    
-    // 상태 초기화
-    setIsProcessing(false);
-    setIsCancelling(false);
-    
-    console.log('응답 중단이 완료되었습니다.');
-  };
-
-  // ESC 키로 답변 중지
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isProcessing) {
-        handleCancelResponse();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isProcessing]);
 
   const handleSendMessage = async (content: string) => {
     if (isProcessing) return;
 
-    // 고유한 요청 ID 생성
-    const requestId = Date.now().toString();
-    
     const userMessage: MessageType = {
-      id: requestId,
+      id: Date.now().toString(),
       role: Role.USER,
       content,
       timestamp: new Date(),
@@ -114,7 +65,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       // 스트리밍 응답이 지원되는 경우 스트리밍 사용
       if (onStreamingMessage) {
         const modelMessage: MessageType = {
-          id: `${requestId}-model`,
+          id: (Date.now() + 1).toString(),
           role: Role.MODEL,
           content: '',
           timestamp: new Date(),
@@ -126,27 +77,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         let fullResponse = '';
 
         for await (const chunk of stream) {
-          // 중지 요청이 있으면 즉시 루프 종료
-          if (isCancelling) {
-            console.log('사용자에 의해 스트리밍이 중단되었습니다.');
-            break;
-          }
-          
-          // 청크가 없으면 건너뛰기
-          if (!chunk || !chunk.text) {
-            continue;
-          }
-          
-          fullResponse += chunk.text;
-          
-          // 메시지 업데이트 (요청 ID 확인)
+          fullResponse += chunk;
           setMessages(prev => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
-            // 요청 ID가 일치하는 메시지만 업데이트
-            if (lastMessage && 
-                lastMessage.role === Role.MODEL && 
-                lastMessage.id === `${requestId}-model`) {
+            if (lastMessage.role === Role.MODEL) {
               lastMessage.content = fullResponse;
             }
             return newMessages;
@@ -157,7 +92,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         const response = await onSendMessage(content);
         
         const modelMessage: MessageType = {
-          id: `${requestId}-model`,
+          id: (Date.now() + 1).toString(),
           role: Role.MODEL,
           content: response,
           timestamp: new Date(),
@@ -166,28 +101,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setMessages(prev => [...prev, modelMessage]);
       }
     } catch (error) {
-      // AbortError는 정상적인 취소로 처리
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('사용자에 의해 요청이 취소되었습니다.');
-        // 중지된 경우 메시지 추가하지 않음
-      } else if (isCancelling) {
-        console.log('중지 요청으로 인해 요청이 중단되었습니다.');
-        // 중지된 경우 메시지 추가하지 않음
-      } else {
-        console.error('응답 생성 중 오류 발생:', error);
-        const errorMessage: MessageType = {
-          id: `${requestId}-error`,
-          role: Role.MODEL,
-          content: `오류가 발생했습니다: ${(error as Error).message}`,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
-      }
+      const errorMessage: MessageType = {
+        id: (Date.now() + 1).toString(),
+        role: Role.MODEL,
+        content: `오류가 발생했습니다: ${(error as Error).message}`,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      // 상태 초기화
       setIsProcessing(false);
-      setIsCancelling(false);
-      console.log('응답 처리가 완료되었습니다.');
     }
   };
 
@@ -212,18 +135,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
             <div className="flex-1">
               <div className="bg-brand-surface border border-brand-secondary rounded-lg p-2 md:p-3">
-                <div className="flex justify-between items-center">
-                  <p className="text-brand-text-secondary text-sm md:text-base">
-                    답변을 생성하고 있습니다...
-                  </p>
-                  <button
-                    onClick={handleCancelResponse}
-                    className="px-3 py-1 bg-brand-secondary text-brand-text-primary rounded text-xs hover:bg-opacity-80 transition-colors"
-                    title="ESC 키로도 중지할 수 있습니다"
-                  >
-                    중지 (ESC)
-                  </button>
-                </div>
+                <p className="text-brand-text-secondary text-sm md:text-base">답변을 생성하고 있습니다...</p>
               </div>
             </div>
           </div>
@@ -234,9 +146,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       
       <MessageInput
         onSendMessage={handleSendMessage}
-        onCancelMessage={handleCancelResponse}
         disabled={isProcessing || isLoading}
-        isProcessing={isProcessing}
         placeholder={placeholder}
       />
     </div>

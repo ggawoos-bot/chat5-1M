@@ -3,17 +3,13 @@ import SendIcon from './icons/SendIcon';
 
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
-  onCancelMessage?: () => void;
   disabled?: boolean;
-  isProcessing?: boolean;
   placeholder?: string;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({ 
   onSendMessage, 
-  onCancelMessage,
   disabled = false, 
-  isProcessing = false,
   placeholder = "메시지를 입력하세요..." 
 }) => {
   const [message, setMessage] = useState('');
@@ -44,19 +40,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
         disabled={disabled}
         className="flex-1 p-2 md:p-3 bg-brand-bg border border-brand-secondary rounded-lg text-brand-text-primary focus:outline-none focus:border-brand-primary disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
       />
-      
-      {/* 답변 중일 때 중지 버튼 표시 */}
-      {isProcessing && onCancelMessage && (
-        <button
-          type="button"
-          onClick={onCancelMessage}
-          className="px-3 py-2 md:px-4 md:py-3 bg-brand-secondary text-brand-text-primary rounded-lg hover:bg-opacity-80 transition-colors flex items-center justify-center"
-          title="답변 중지 (ESC 키도 사용 가능)"
-        >
-          ⏹️ 중지
-        </button>
-      )}
-      
       <button
         type="submit"
         disabled={disabled || !message.trim()}
