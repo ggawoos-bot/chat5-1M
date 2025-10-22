@@ -51,12 +51,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [resetTrigger]);
 
-  // 답변 중지 함수
+  // 답변 중지 함수 (개선된 버전)
   const handleCancelResponse = () => {
+    console.log('사용자에 의해 응답이 중단되었습니다.');
     setIsCancelling(true);
+    
+    // GeminiService의 요청 중단
     geminiService.cancelCurrentRequest();
     
-    // 불완전한 메시지 제거
+    // 불완전한 메시지 제거 (개선된 로직)
     setMessages(prev => {
       const newMessages = [...prev];
       const lastMessage = newMessages[newMessages.length - 1];
@@ -72,8 +75,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return newMessages;
     });
     
+    // 상태 초기화
     setIsProcessing(false);
     setIsCancelling(false);
+    
+    console.log('응답 중단이 완료되었습니다.');
   };
 
   // ESC 키로 답변 중지
@@ -120,18 +126,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         let fullResponse = '';
 
         for await (const chunk of stream) {
-          // 중지 요청이 있으면 루프 종료
+          // 중지 요청이 있으면 즉시 루프 종료
           if (isCancelling) {
             console.log('사용자에 의해 스트리밍이 중단되었습니다.');
             break;
           }
           
-          fullResponse += chunk;
+          // 청크가 없으면 건너뛰기
+          if (!chunk || !chunk.text) {
+            continue;
+          }
+          
+          fullResponse += chunk.text;
+          
+          // 메시지 업데이트 (요청 ID 확인)
           setMessages(prev => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
             // 요청 ID가 일치하는 메시지만 업데이트
-            if (lastMessage.role === Role.MODEL && lastMessage.id === `${requestId}-model`) {
+            if (lastMessage && 
+                lastMessage.role === Role.MODEL && 
+                lastMessage.id === `${requestId}-model`) {
               lastMessage.content = fullResponse;
             }
             return newMessages;
@@ -155,7 +170,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('사용자에 의해 요청이 취소되었습니다.');
         // 중지된 경우 메시지 추가하지 않음
+      } else if (isCancelling) {
+        console.log('중지 요청으로 인해 요청이 중단되었습니다.');
+        // 중지된 경우 메시지 추가하지 않음
       } else {
+        console.error('응답 생성 중 오류 발생:', error);
         const errorMessage: MessageType = {
           id: `${requestId}-error`,
           role: Role.MODEL,
@@ -165,8 +184,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setMessages(prev => [...prev, errorMessage]);
       }
     } finally {
+      // 상태 초기화
       setIsProcessing(false);
       setIsCancelling(false);
+      console.log('응답 처리가 완료되었습니다.');
     }
   };
 
