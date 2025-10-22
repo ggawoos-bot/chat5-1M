@@ -87,7 +87,7 @@ function App() {
             <div className="w-16 h-16 border-4 border-brand-secondary rounded-full mx-auto"></div>
             <div className="w-16 h-16 border-4 border-brand-primary border-t-transparent rounded-full animate-spin absolute top-0 left-1/2 transform -translate-x-1/2"></div>
           </div>
-          <h2 className="text-2xl font-bold text-brand-text-primary mb-3">AI 사업문의 지원 Chatbot4</h2>
+          <h2 className="text-2xl font-bold text-brand-text-primary mb-3">AI 사업문의 지원 Chatbot5-1M</h2>
           <p className="text-brand-text-secondary mb-4">문서를 준비하고 있습니다...</p>
           <div className="space-y-2 text-sm text-brand-text-secondary">
             <div className="flex items-center justify-center space-x-2">
