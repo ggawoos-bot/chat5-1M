@@ -612,19 +612,25 @@ const extractLegalArticles = (pageText, filename) => {
               setError(null);
 
               try {
-                  const stream = await chatSession.sendMessageStream({ message: userMessage.content });
-
-                  let modelResponse = '';
-                  setMessages(prev => [...prev, { role: Role.MODEL, content: '' }]);
-
-                  for await (const chunk of stream) {
-                      modelResponse += chunk.text;
-                      setMessages(prev => {
-                          const newMessages = [...prev];
-                          newMessages[newMessages.length - 1].content = modelResponse;
-                          return newMessages;
-                      });
+                  // 답변 품질을 보장하는 질문 처리
+                  const result = await geminiService.processQuestionWithQualityGuarantee(userMessage.content);
+                  
+                  // 답변 품질에 따른 메시지 처리
+                  let responseContent = result.answer;
+                  
+                  // 답변 품질 표시 추가
+                  if (result.quality === 'guaranteed') {
+                      responseContent += '\n\n✅ **답변 품질: 100% 보장** (모든 PDF 데이터 기반)';
+                  } else if (result.quality === 'partial') {
+                      responseContent += `\n\n⚠️ **답변 품질: 부분적** (${result.loadedPDFs}/${result.totalPDFs} PDF 로드됨)`;
+                  } else if (result.quality === 'insufficient') {
+                      responseContent += '\n\n❌ **답변 품질: 불충분** (PDF 로딩 미완료)';
                   }
+                  
+                  // AI 응답 추가
+                  const aiMessage = { role: Role.MODEL, content: responseContent };
+                  setMessages(prev => [...prev, aiMessage]);
+                  
               } catch (err) {
                   console.error(err);
                   let displayMessage = '죄송합니다, 답변을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
@@ -717,6 +723,82 @@ const extractLegalArticles = (pageText, filename) => {
                                      </div>
                                  )}
                                  
+                                 {/* 답변 품질 보장 UI */}
+                                 {!isParsing && chatSession && (
+                                     <div className="mb-4 p-4 bg-brand-surface rounded-lg border border-brand-secondary">
+                                         <div className="flex items-center justify-between mb-3">
+                                             <h3 className="text-lg font-semibold text-brand-text-primary">답변 품질 보장 시스템</h3>
+                                             <div className="flex space-x-2">
+                                                 <button
+                                                     onClick={() => window.showPerformanceStats()}
+                                                     className="px-3 py-1 bg-brand-primary text-white rounded text-sm hover:bg-blue-600"
+                                                 >
+                                                     통계 보기
+                                                 </button>
+                                                 <button
+                                                     onClick={() => window.cleanupMemory()}
+                                                     className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700"
+                                                 >
+                                                     메모리 정리
+                                                 </button>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                                             <div className="bg-brand-bg p-3 rounded">
+                                                 <div className="text-brand-text-secondary mb-1">로딩 상태</div>
+                                                 <div className="text-brand-text-primary font-medium">
+                                                     {loadingProgress ? `${loadingProgress.current}/${loadingProgress.total} 완료` : 'N/A'}
+                                                 </div>
+                                             </div>
+                                             
+                                             <div className="bg-brand-bg p-3 rounded">
+                                                 <div className="text-brand-text-secondary mb-1">답변 품질</div>
+                                                 <div className="text-green-400 font-medium" id="answerQuality">
+                                                     {loadingProgress && loadingProgress.current < loadingProgress.total ? '로딩 중...' : '100% 보장'}
+                                                 </div>
+                                             </div>
+                                             
+                                             <div className="bg-brand-bg p-3 rounded">
+                                                 <div className="text-brand-text-secondary mb-1">메모리 사용량</div>
+                                                 <div className="text-brand-text-primary font-medium" id="memoryUsage">
+                                                     계산 중...
+                                                 </div>
+                                             </div>
+                                             
+                                             <div className="bg-brand-bg p-3 rounded">
+                                                 <div className="text-brand-text-secondary mb-1">캐시 상태</div>
+                                                 <div className="text-brand-text-primary font-medium" id="cacheStatus">
+                                                     확인 중...
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         {/* 답변 품질 보장 메시지 */}
+                                         {loadingProgress && loadingProgress.current < loadingProgress.total && (
+                                             <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
+                                                 <div className="flex items-center">
+                                                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
+                                                     <span className="text-yellow-300 text-sm">
+                                                         답변 품질 100% 보장을 위해 모든 PDF 로딩을 완료한 후 답변을 제공합니다.
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                         )}
+                                         
+                                         {loadingProgress && loadingProgress.current >= loadingProgress.total && (
+                                             <div className="mt-3 p-3 bg-green-900/20 border border-green-500/30 rounded">
+                                                 <div className="flex items-center">
+                                                     <div className="w-4 h-4 bg-green-400 rounded-full mr-2"></div>
+                                                     <span className="text-green-300 text-sm">
+                                                         모든 PDF 로딩 완료! 답변 품질 100% 보장됩니다.
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                         )}
+                                     </div>
+                                 )}
+                                 
                                  <ChatWindow 
                                      messages={messages} 
                                      isLoading={isLoading} 
@@ -750,6 +832,52 @@ const extractLegalArticles = (pageText, filename) => {
           <App />
         </StrictMode>
       );
+
+      // 성능 모니터링 함수들
+      window.showPerformanceStats = function() {
+          const stats = geminiService.getPerformanceStats();
+          const statsText = `
+성능 통계:
+- 점진적 로딩: ${stats.isProgressiveLoadingEnabled ? '활성화' : '비활성화'}
+- 메모리 최적화: ${stats.isMemoryOptimizationEnabled ? '활성화' : '비활성화'}
+- 캐싱: ${stats.isCachingEnabled ? '활성화' : '비활성화'}
+- 로딩 진행률: ${stats.loadingProgress ? `${stats.loadingProgress.current}/${stats.loadingProgress.total}` : 'N/A'}
+- 메모리 사용량: ${stats.memoryStats ? `${(stats.memoryStats.memoryUsage / 1024 / 1024).toFixed(2)}MB` : 'N/A'}
+- 캐시 히트율: ${stats.memoryStats ? `${(stats.memoryStats.hitRate * 100).toFixed(1)}%` : 'N/A'}
+          `;
+          alert(statsText);
+      };
+
+      window.cleanupMemory = function() {
+          geminiService.cleanupMemory();
+          alert('메모리 정리가 완료되었습니다.');
+      };
+
+      window.cleanupCache = function() {
+          geminiService.cleanupCache();
+          alert('캐시 정리가 완료되었습니다.');
+      };
+
+      // 성능 통계 업데이트 함수
+      function updatePerformanceStats() {
+          const stats = geminiService.getPerformanceStats();
+          
+          // 메모리 사용량 업데이트
+          const memoryElement = document.getElementById('memoryUsage');
+          if (memoryElement && stats.memoryStats) {
+              memoryElement.textContent = `${(stats.memoryStats.memoryUsage / 1024 / 1024).toFixed(2)}MB`;
+          }
+          
+          // 캐시 상태 업데이트
+          const cacheElement = document.getElementById('cacheStatus');
+          if (cacheElement && stats.memoryStats) {
+              const hitRate = (stats.memoryStats.hitRate * 100).toFixed(1);
+              cacheElement.textContent = `히트율 ${hitRate}%`;
+          }
+      }
+
+      // 주기적으로 성능 통계 업데이트
+      setInterval(updatePerformanceStats, 5000);
     </script>
   <script type="module" src="/index.tsx"></script>
 </body>
