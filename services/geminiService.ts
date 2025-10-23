@@ -34,18 +34,24 @@ IMPORTANT INSTRUCTIONS:
       * "건강증진법(제1조)" for 국민건강증진법률 시행령 시행규칙
       * "질서위반행위규제법(제16조제1항)" for 질서위반행위규제법 및 시행령
       * "질서위반행위규제법(제18조제1항제1호)" for detailed article references
-    - NON-LEGAL DOCUMENTS (일반문서): Use page references (페이지)
-      * "업무지침(p.7)" for 금연구역 지정 관리 업무지침
-      * "가이드라인(p.2)" for 유치원 어린이집 가이드라인
-      * "매뉴얼(p.7)" for 금연지원서비스 통합시스템 매뉴얼
+    - NON-LEGAL DOCUMENTS (일반문서): Use simplified document names with page references
+      * "금연구역 지정 관리 업무지침, p.7" for 금연구역 지정 관리 업무지침_2025개정판
+      * "유치원 어린이집 가이드라인, p.2" for 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인
+      * "금연지원서비스 매뉴얼, p.7" for 금연지원서비스 통합시스템 사용자매뉴얼
     - IMPORTANT CITATION RULES:
       * For legal documents: Use [ARTICLE_X] markers to find article references
       * For non-legal documents: Use [PAGE_X] markers to find page references
       * When information appears in multiple articles/pages, include ALL relevant references
       * For multiple articles: "건강증진법(제1조, 제3조, 제5조)" instead of just "건강증진법(제1조)"
-      * For multiple pages: "업무지침(p.7, 9, 12)" instead of just "업무지침(p.7)"
+      * For multiple pages: "금연구역 지정 관리 업무지침, p.7, p.9, p.12" instead of just "금연구역 지정 관리 업무지침, p.7"
       * Group references by document and separate different documents with commas
-      * Example: "건강증진법(제1조, 제3조), 업무지침(p.7, 9, 12), 매뉴얼(p.15)"
+      * Use simplified document names as follows:
+        - "금연구역 지정 관리 업무지침" for 금연구역 지정 관리 업무지침_2025개정판
+        - "유치원 어린이집 가이드라인" for 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인
+        - "금연지원서비스 매뉴얼" for 금연지원서비스 통합시스템 사용자매뉴얼
+        - "니코틴보조제 가이드라인" for 니코틴보조제 이용방법 가이드라인_230320
+        - "지역사회 통합건강증진사업 안내서" for 2025년 지역사회 통합건강증진사업 안내서(금연)
+      * Example: "건강증진법(제1조, 제3조), 금연구역 지정 관리 업무지침, p.7, p.9, p.12, 금연지원서비스 매뉴얼, p.15"
 16. If the table already includes a "출처" or "관련 출처" column, do NOT add a separate 참조문서 section below
 17. If the table does NOT have a source column, then add a "참조문서" section below with full document names and page numbers
 18. IMPORTANT: If sources are already cited inline within the main text (e.g., "(건강증진법, p.6, 7; 업무지침, p.9)"), do NOT add a separate 참조문서 section below
@@ -61,9 +67,9 @@ IMPORTANT INSTRUCTIONS:
     ### 참조문서
     - **건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조, 제3조, 제5조
     - **질서위반행위규제법**: 질서위반행위규제법 및 시행령(20210101) - 제16조제1항, 제18조제1항
-    - **업무지침**: 금연구역 지정 관리 업무지침_2025개정판 - p.2, 4, 6, 60, 105, 108
-    - **가이드라인**: 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인 - p.1, 2, 3
-    - **매뉴얼**: 금연지원서비스 통합시스템 사용자매뉴얼 - p.7, 9
+    - **금연구역 지정 관리 업무지침**: p.2, p.4, p.6, p.60, p.105, p.108
+    - **유치원 어린이집 가이드라인**: p.1, p.2, p.3
+    - **금연지원서비스 매뉴얼**: p.7, p.9
     - Group all references for each document in ascending order (articles for legal docs, pages for others)
 
 23. EXAMPLES OF PROPER CITATIONS:
@@ -73,15 +79,16 @@ IMPORTANT INSTRUCTIONS:
       * Detailed article: "질서위반행위규제법(제16조제1항제1호)"
       * Multiple detailed: "질서위반행위규제법(제16조제1항, 제18조제1항제1호)"
     - Non-legal documents (pages):
-      * Single page: "업무지침(p.7)"
-      * Multiple pages: "업무지침(p.7, 9, 12)"
-      * Page range: "업무지침(p.7-9)"
-      * Mixed: "업무지침(p.4, 7-9, 12)"
-    - Mixed documents: "건강증진법(제1조, 제3조), 업무지침(p.7, 9, 12)"
+      * Single page: "금연구역 지정 관리 업무지침, p.7"
+      * Multiple pages: "금연구역 지정 관리 업무지침, p.7, p.9, p.12"
+      * Page range: "금연구역 지정 관리 업무지침, p.7-p.9"
+      * Mixed: "금연구역 지정 관리 업무지침, p.4, p.7-p.9, p.12"
+    - Mixed documents: "건강증진법(제1조, 제3조), 금연구역 지정 관리 업무지침, p.7, p.9, p.12"
     
     WRONG EXAMPLES TO AVOID:
     - Using page numbers for legal documents: "건강증진법(p.3)" ❌
-    - Using articles for non-legal documents: "업무지침(제1조)" ❌
+    - Using articles for non-legal documents: "금연구역 지정 관리 업무지침(제1조)" ❌
+    - Using verbose document names: "업무지침_2025개정판 - 항까지의 규정(p.12)" ❌
     - Missing references when information spans multiple articles/pages
     - Inconsistent citation format within the same response
 
