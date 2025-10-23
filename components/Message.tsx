@@ -1,19 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Message as MessageType } from '../types';
 import UserIcon from './icons/UserIcon';
 import BotIcon from './icons/BotIcon';
 import CopyIcon from './icons/CopyIcon';
+import { convertCitationsToLinks, handleCitationClick, ParsedCitation } from '../utils/citationParser';
 
 interface MessageProps {
   message: MessageType;
+  onCitationClick?: (citation: ParsedCitation) => void;
 }
 
-const Message: React.FC<MessageProps> = ({ message }) => {
+const Message: React.FC<MessageProps> = ({ message, onCitationClick }) => {
   const isUser = message.role === 'user';
   const Icon = isUser ? UserIcon : BotIcon;
   const [isCopied, setIsCopied] = useState(false);
+  const [processedContent, setProcessedContent] = useState(message.content);
+
+  // 인용 링크 처리
+  useEffect(() => {
+    if (!isUser && onCitationClick) {
+      const processed = convertCitationsToLinks(message.content, onCitationClick);
+      setProcessedContent(processed);
+    } else {
+      setProcessedContent(message.content);
+    }
+  }, [message.content, isUser, onCitationClick]);
+
+  // 인용 링크 클릭 이벤트 리스너
+  useEffect(() => {
+    if (!isUser && onCitationClick) {
+      const handleClick = (event: Event) => handleCitationClick(event, onCitationClick);
+      document.addEventListener('click', handleClick);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [isUser, onCitationClick]);
 
   // 디버깅을 위한 로그
   if (!isUser) {
@@ -171,7 +193,7 @@ const Message: React.FC<MessageProps> = ({ message }) => {
                   ),
                 }}
               >
-                {message.content}
+                {processedContent}
               </ReactMarkdown>
             </div>
           )}
