@@ -288,6 +288,58 @@
               return null;
           }, [sourceText]);
           
+          // 법령 문서인지 식별하는 함수
+          const isLegalDocument = (filename) => {
+              const legalKeywords = [
+                  '법률', '법', '시행령', '시행규칙', '규제법', '해설집'
+              ];
+              
+              return legalKeywords.some(keyword => 
+                  filename.toLowerCase().includes(keyword.toLowerCase())
+              );
+          };
+
+          // 법령 조항을 추출하는 함수
+          const extractLegalArticles = (pageText) => {
+              const articles = [];
+              
+              // 법령 조항 패턴들
+              const articlePatterns = [
+                  // "제1조" 형태
+                  /제(\d+)조/g,
+                  // "제1조제1항" 형태
+                  /제(\d+)조제(\d+)항/g,
+                  // "제1조제1항제1호" 형태
+                  /제(\d+)조제(\d+)항제(\d+)호/g,
+                  // "제1조제1항제1호가목" 형태
+                  /제(\d+)조제(\d+)항제(\d+)호([가-힣])목/g,
+                  // "제1조제1항제1호가목1" 형태
+                  /제(\d+)조제(\d+)항제(\d+)호([가-힣])목(\d+)/g
+              ];
+              
+              // 각 패턴에 대해 매칭
+              articlePatterns.forEach(pattern => {
+                  const matches = pageText.match(pattern);
+                  if (matches) {
+                      articles.push(...matches);
+                  }
+              });
+              
+              // 중복 제거 및 정렬
+              return [...new Set(articles)].sort((a, b) => {
+                  // 숫자 순으로 정렬
+                  const aNum = a.match(/\d+/g)?.map(Number) || [0];
+                  const bNum = b.match(/\d+/g)?.map(Number) || [0];
+                  
+                  for (let i = 0; i < Math.max(aNum.length, bNum.length); i++) {
+                      const aVal = aNum[i] || 0;
+                      const bVal = bNum[i] || 0;
+                      if (aVal !== bVal) return aVal - bVal;
+                  }
+                  return 0;
+              });
+          };
+
           // 실제 PDF 페이지 번호를 추출하는 함수 (개선된 버전)
           const extractActualPageNumber = (pageText, pageIndex) => {
               // 1. 줄바꿈을 보존하여 텍스트를 라인별로 분할
@@ -360,8 +412,10 @@
                   
                   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfData) }).promise;
                   let fullText = '';
+                  const filename = url.split('/').pop() || '';
+                  const isLegal = isLegalDocument(filename);
                   
-                  console.log(`PDF 총 페이지 수: ${pdf.numPages}`);
+                  console.log(`PDF 총 페이지 수: ${pdf.numPages}, 법령 문서: ${isLegal}`);
                   
                   for (let i = 1; i <= pdf.numPages; i++) {
                       const page = await pdf.getPage(i);
@@ -379,15 +433,34 @@
                           }
                       }
                       
-                      // 실제 페이지 번호 추출
-                      const actualPageNumber = extractActualPageNumber(pageText, i);
-                      
-                      // 실제 페이지 번호로 마커 생성
-                      fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+                      if (isLegal) {
+                          // 법령 문서의 경우 조항 추출
+                          const articles = extractLegalArticles(pageText);
+                          if (articles.length > 0) {
+                              // 조항이 있는 경우 조항으로 마커 생성
+                              const articleMarkers = articles.map(article => `[ARTICLE_${article}]`).join(' ');
+                              fullText += `${articleMarkers} ${pageText}\n\n`;
+                              console.log(`페이지 ${i}에서 법령 조항 발견: ${articles.join(', ')}`);
+                          } else {
+                              // 조항이 없는 경우 페이지 번호 사용
+                              const actualPageNumber = extractActualPageNumber(pageText, i);
+                              fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+                          }
+                      } else {
+                          // 일반 문서의 경우 페이지 번호 사용
+                          const actualPageNumber = extractActualPageNumber(pageText, i);
+                          fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+                      }
                       
                       // 디버깅을 위한 로그
                       if (i <= 5 || i % 10 === 0) {
-                          console.log(`PDF.js 페이지 ${i} → 실제 페이지 ${actualPageNumber}`);
+                          if (isLegal) {
+                              const articles = extractLegalArticles(pageText);
+                              console.log(`PDF.js 페이지 ${i} → 법령 조항: ${articles.length > 0 ? articles.join(', ') : '없음'}`);
+                          } else {
+                              const actualPageNumber = extractActualPageNumber(pageText, i);
+                              console.log(`PDF.js 페이지 ${i} → 실제 페이지 ${actualPageNumber}`);
+                          }
                       }
                   }
                   

@@ -29,19 +29,23 @@ IMPORTANT INSTRUCTIONS:
     |----------|----------|----------|
     | Data 1   | Data 2   | Data 3   |
 14. Always include the separator row (---) between header and data rows
-15. For source citations in tables, use abbreviated document names with page references:
-    - "건강증진법(p.3)" for 국민건강증진법률 시행령 시행규칙
-    - "업무지침(p.7)" for 금연구역 지정 관리 업무지침
-    - "가이드라인(p.2)" for 유치원 어린이집 가이드라인
-    - "매뉴얼(p.7)" for 금연지원서비스 통합시스템 매뉴얼
-    - IMPORTANT PAGE CITATION RULES:
-      * When information appears on multiple pages, include ALL relevant page numbers
-      * Use actual PDF page numbers as they appear in [PAGE_X] markers in the source text
+15. For source citations in tables, use appropriate reference format based on document type:
+    - LEGAL DOCUMENTS (법령): Use article references (조항)
+      * "건강증진법(제1조)" for 국민건강증진법률 시행령 시행규칙
+      * "질서위반행위규제법(제16조제1항)" for 질서위반행위규제법 및 시행령
+      * "질서위반행위규제법(제18조제1항제1호)" for detailed article references
+    - NON-LEGAL DOCUMENTS (일반문서): Use page references (페이지)
+      * "업무지침(p.7)" for 금연구역 지정 관리 업무지침
+      * "가이드라인(p.2)" for 유치원 어린이집 가이드라인
+      * "매뉴얼(p.7)" for 금연지원서비스 통합시스템 매뉴얼
+    - IMPORTANT CITATION RULES:
+      * For legal documents: Use [ARTICLE_X] markers to find article references
+      * For non-legal documents: Use [PAGE_X] markers to find page references
+      * When information appears in multiple articles/pages, include ALL relevant references
+      * For multiple articles: "건강증진법(제1조, 제3조, 제5조)" instead of just "건강증진법(제1조)"
       * For multiple pages: "업무지침(p.7, 9, 12)" instead of just "업무지침(p.7)"
-      * For consecutive pages: "업무지침(p.7-9)" 
-      * For scattered pages: "업무지침(p.4, 7, 9, 12)"
-      * Group page numbers by document and separate different documents with commas
-      * Example: "건강증진법(p.3, 5), 업무지침(p.7, 9, 12), 매뉴얼(p.15)"
+      * Group references by document and separate different documents with commas
+      * Example: "건강증진법(제1조, 제3조), 업무지침(p.7, 9, 12), 매뉴얼(p.15)"
 16. If the table already includes a "출처" or "관련 출처" column, do NOT add a separate 참조문서 section below
 17. If the table does NOT have a source column, then add a "참조문서" section below with full document names and page numbers
 18. IMPORTANT: If sources are already cited inline within the main text (e.g., "(건강증진법, p.6, 7; 업무지침, p.9)"), do NOT add a separate 참조문서 section below
@@ -55,23 +59,31 @@ IMPORTANT INSTRUCTIONS:
     * If unsure, include more pages rather than fewer
 22. Format the 참조문서 section (only when needed) as follows:
     ### 참조문서
-    - **건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - p.3, 5, 8
+    - **건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조, 제3조, 제5조
+    - **질서위반행위규제법**: 질서위반행위규제법 및 시행령(20210101) - 제16조제1항, 제18조제1항
     - **업무지침**: 금연구역 지정 관리 업무지침_2025개정판 - p.2, 4, 6, 60, 105, 108
     - **가이드라인**: 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인 - p.1, 2, 3
     - **매뉴얼**: 금연지원서비스 통합시스템 사용자매뉴얼 - p.7, 9
-    - Group all page numbers for each document in ascending order
+    - Group all references for each document in ascending order (articles for legal docs, pages for others)
 
-23. EXAMPLES OF PROPER PAGE CITATIONS:
-    - Single page: "업무지침(p.7)"
-    - Multiple pages: "업무지침(p.7, 9, 12)"
-    - Page range: "업무지침(p.7-9)"
-    - Mixed: "업무지침(p.4, 7-9, 12)"
-    - Multiple documents: "건강증진법(p.3, 5), 업무지침(p.7, 9, 12)"
+23. EXAMPLES OF PROPER CITATIONS:
+    - Legal documents (articles):
+      * Single article: "건강증진법(제1조)"
+      * Multiple articles: "건강증진법(제1조, 제3조, 제5조)"
+      * Detailed article: "질서위반행위규제법(제16조제1항제1호)"
+      * Multiple detailed: "질서위반행위규제법(제16조제1항, 제18조제1항제1호)"
+    - Non-legal documents (pages):
+      * Single page: "업무지침(p.7)"
+      * Multiple pages: "업무지침(p.7, 9, 12)"
+      * Page range: "업무지침(p.7-9)"
+      * Mixed: "업무지침(p.4, 7-9, 12)"
+    - Mixed documents: "건강증진법(제1조, 제3조), 업무지침(p.7, 9, 12)"
     
     WRONG EXAMPLES TO AVOID:
-    - "업무지침(p.7)" when information also appears on page 9
-    - "업무지침(p.7-12)" when information is only on pages 7, 9, 12
-    - Missing page numbers when information spans multiple pages
+    - Using page numbers for legal documents: "건강증진법(p.3)" ❌
+    - Using articles for non-legal documents: "업무지침(제1조)" ❌
+    - Missing references when information spans multiple articles/pages
+    - Inconsistent citation format within the same response
 
 Here is the source material:
 ---START OF SOURCE---
@@ -447,6 +459,58 @@ export class GeminiService {
     });
   }
 
+  // 법령 문서인지 식별하는 메서드
+  private isLegalDocument(filename: string): boolean {
+    const legalKeywords = [
+      '법률', '법', '시행령', '시행규칙', '규제법', '해설집'
+    ];
+    
+    return legalKeywords.some(keyword => 
+      filename.toLowerCase().includes(keyword.toLowerCase())
+    );
+  }
+
+  // 법령 조항을 추출하는 메서드
+  private extractLegalArticles(pageText: string): string[] {
+    const articles: string[] = [];
+    
+    // 법령 조항 패턴들
+    const articlePatterns = [
+      // "제1조" 형태
+      /제(\d+)조/g,
+      // "제1조제1항" 형태
+      /제(\d+)조제(\d+)항/g,
+      // "제1조제1항제1호" 형태
+      /제(\d+)조제(\d+)항제(\d+)호/g,
+      // "제1조제1항제1호가목" 형태
+      /제(\d+)조제(\d+)항제(\d+)호([가-힣])목/g,
+      // "제1조제1항제1호가목1" 형태
+      /제(\d+)조제(\d+)항제(\d+)호([가-힣])목(\d+)/g
+    ];
+    
+    // 각 패턴에 대해 매칭
+    articlePatterns.forEach(pattern => {
+      const matches = pageText.match(pattern);
+      if (matches) {
+        articles.push(...matches);
+      }
+    });
+    
+    // 중복 제거 및 정렬
+    return [...new Set(articles)].sort((a, b) => {
+      // 숫자 순으로 정렬
+      const aNum = a.match(/\d+/g)?.map(Number) || [0];
+      const bNum = b.match(/\d+/g)?.map(Number) || [0];
+      
+      for (let i = 0; i < Math.max(aNum.length, bNum.length); i++) {
+        const aVal = aNum[i] || 0;
+        const bVal = bNum[i] || 0;
+        if (aVal !== bVal) return aVal - bVal;
+      }
+      return 0;
+    });
+  }
+
   // 실제 PDF 페이지 번호를 추출하는 메서드 (개선된 버전)
   private extractActualPageNumber(pageText: string, pageIndex: number): number {
     // 1. 줄바꿈을 보존하여 텍스트를 라인별로 분할
@@ -529,8 +593,10 @@ export class GeminiService {
       }).promise;
       
       let fullText = '';
+      const filename = url.split('/').pop() || '';
+      const isLegal = this.isLegalDocument(filename);
       
-      console.log(`PDF 총 페이지 수: ${pdf.numPages}`);
+      console.log(`PDF 총 페이지 수: ${pdf.numPages}, 법령 문서: ${isLegal}`);
       
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -548,15 +614,34 @@ export class GeminiService {
           }
         }
         
-        // 실제 페이지 번호 추출
-        const actualPageNumber = this.extractActualPageNumber(pageText, i);
-        
-        // 실제 페이지 번호로 마커 생성
-        fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+        if (isLegal) {
+          // 법령 문서의 경우 조항 추출
+          const articles = this.extractLegalArticles(pageText);
+          if (articles.length > 0) {
+            // 조항이 있는 경우 조항으로 마커 생성
+            const articleMarkers = articles.map(article => `[ARTICLE_${article}]`).join(' ');
+            fullText += `${articleMarkers} ${pageText}\n\n`;
+            console.log(`페이지 ${i}에서 법령 조항 발견: ${articles.join(', ')}`);
+          } else {
+            // 조항이 없는 경우 페이지 번호 사용
+            const actualPageNumber = this.extractActualPageNumber(pageText, i);
+            fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+          }
+        } else {
+          // 일반 문서의 경우 페이지 번호 사용
+          const actualPageNumber = this.extractActualPageNumber(pageText, i);
+          fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+        }
         
         // 디버깅을 위한 로그
         if (i <= 5 || i % 10 === 0) {
-          console.log(`PDF.js 페이지 ${i} → 실제 페이지 ${actualPageNumber}`);
+          if (isLegal) {
+            const articles = this.extractLegalArticles(pageText);
+            console.log(`PDF.js 페이지 ${i} → 법령 조항: ${articles.length > 0 ? articles.join(', ') : '없음'}`);
+          } else {
+            const actualPageNumber = this.extractActualPageNumber(pageText, i);
+            console.log(`PDF.js 페이지 ${i} → 실제 페이지 ${actualPageNumber}`);
+          }
         }
       }
       
