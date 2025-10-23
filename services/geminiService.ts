@@ -447,54 +447,63 @@ export class GeminiService {
     });
   }
 
-  // 실제 PDF 페이지 번호를 추출하는 메서드
+  // 실제 PDF 페이지 번호를 추출하는 메서드 (개선된 버전)
   private extractActualPageNumber(pageText: string, pageIndex: number): number {
-    // 1. 페이지 하단의 페이지 번호 패턴들 (우선순위 순)
-    const pageNumberPatterns = [
-      // "69" (페이지 끝의 단독 숫자)
-      /^.*?(\d+)\s*$/m,
-      // "페이지 69" 형태
-      /페이지\s*(\d+)/i,
-      // "Page 69" 형태  
-      /Page\s*(\d+)/i,
-      // "69/124" 형태 (분수에서 분자만)
-      /(\d+)\s*\/\s*\d+/,
-      // "69 of 124" 형태
-      /(\d+)\s*of\s*\d+/i,
-      // "p.69" 형태
-      /p\.\s*(\d+)/i,
-      // "P.69" 형태
-      /P\.\s*(\d+)/i
-    ];
+    // 1. 줄바꿈을 보존하여 텍스트를 라인별로 분할
+    const lines = pageText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     
-    // 각 패턴을 순서대로 시도
-    for (const pattern of pageNumberPatterns) {
-      const matches = pageText.match(pattern);
-      if (matches && matches[1]) {
-        const pageNum = parseInt(matches[1], 10);
-        // 유효한 페이지 번호인지 확인 (1-999 범위)
+    // 2. 페이지 하단에서 페이지 번호 찾기 (마지막 5줄에서 검색)
+    const bottomLines = lines.slice(-5);
+    
+    for (let i = bottomLines.length - 1; i >= 0; i--) {
+      const line = bottomLines[i];
+      
+      // 3. 페이지 번호 패턴들 (우선순위 순)
+      const pageNumberPatterns = [
+        // "69" (단독 숫자만 있는 줄)
+        /^(\d+)$/,
+        // "페이지 69" 형태
+        /^페이지\s*(\d+)$/i,
+        // "Page 69" 형태  
+        /^Page\s*(\d+)$/i,
+        // "69/124" 형태 (분수에서 분자만)
+        /^(\d+)\s*\/\s*\d+$/,
+        // "69 of 124" 형태
+        /^(\d+)\s*of\s*\d+$/i,
+        // "p.69" 형태
+        /^p\.\s*(\d+)$/i,
+        // "P.69" 형태
+        /^P\.\s*(\d+)$/i
+      ];
+      
+      // 각 패턴을 순서대로 시도
+      for (const pattern of pageNumberPatterns) {
+        const match = line.match(pattern);
+        if (match && match[1]) {
+          const pageNum = parseInt(match[1], 10);
+          // 유효한 페이지 번호인지 확인 (1-999 범위)
+          if (pageNum >= 1 && pageNum <= 999) {
+            console.log(`페이지 ${pageIndex}에서 실제 페이지 번호 ${pageNum} 발견 (라인: "${line}")`);
+            return pageNum;
+          }
+        }
+      }
+    }
+    
+    // 4. 페이지 하단에서 숫자만 있는 라인 찾기
+    for (let i = bottomLines.length - 1; i >= 0; i--) {
+      const line = bottomLines[i];
+      // 숫자만 있는 라인인지 확인
+      if (/^\d+$/.test(line)) {
+        const pageNum = parseInt(line, 10);
         if (pageNum >= 1 && pageNum <= 999) {
-          console.log(`페이지 ${pageIndex}에서 실제 페이지 번호 ${pageNum} 발견`);
+          console.log(`페이지 ${pageIndex}에서 추정 페이지 번호 ${pageNum} 발견 (라인: "${line}")`);
           return pageNum;
         }
       }
     }
     
-    // 2. 페이지 텍스트에서 숫자 패턴 분석
-    const numbers = pageText.match(/\d+/g);
-    if (numbers) {
-      // 페이지 끝 부분의 숫자들을 확인
-      const endNumbers = numbers.slice(-3); // 마지막 3개 숫자
-      for (const num of endNumbers.reverse()) {
-        const pageNum = parseInt(num, 10);
-        if (pageNum >= 1 && pageNum <= 999) {
-          console.log(`페이지 ${pageIndex}에서 추정 페이지 번호 ${pageNum} 발견`);
-          return pageNum;
-        }
-      }
-    }
-    
-    // 3. 찾지 못하면 순차 인덱스 사용 (fallback)
+    // 5. 찾지 못하면 순차 인덱스 사용 (fallback)
     console.warn(`페이지 ${pageIndex}에서 실제 페이지 번호를 찾지 못함, 순차 인덱스 ${pageIndex} 사용`);
     return pageIndex;
   }
@@ -526,7 +535,18 @@ export class GeminiService {
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        
+        // 줄바꿈을 보존하여 텍스트 구성
+        let pageText = '';
+        for (let j = 0; j < textContent.items.length; j++) {
+          const item = textContent.items[j];
+          pageText += item.str;
+          
+          // 줄바꿈이 필요한 경우 추가
+          if (item.hasEOL) {
+            pageText += '\n';
+          }
+        }
         
         // 실제 페이지 번호 추출
         const actualPageNumber = this.extractActualPageNumber(pageText, i);
