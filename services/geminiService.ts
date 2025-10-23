@@ -447,6 +447,58 @@ export class GeminiService {
     });
   }
 
+  // 실제 PDF 페이지 번호를 추출하는 메서드
+  private extractActualPageNumber(pageText: string, pageIndex: number): number {
+    // 1. 페이지 하단의 페이지 번호 패턴들 (우선순위 순)
+    const pageNumberPatterns = [
+      // "69" (페이지 끝의 단독 숫자)
+      /^.*?(\d+)\s*$/m,
+      // "페이지 69" 형태
+      /페이지\s*(\d+)/i,
+      // "Page 69" 형태  
+      /Page\s*(\d+)/i,
+      // "69/124" 형태 (분수에서 분자만)
+      /(\d+)\s*\/\s*\d+/,
+      // "69 of 124" 형태
+      /(\d+)\s*of\s*\d+/i,
+      // "p.69" 형태
+      /p\.\s*(\d+)/i,
+      // "P.69" 형태
+      /P\.\s*(\d+)/i
+    ];
+    
+    // 각 패턴을 순서대로 시도
+    for (const pattern of pageNumberPatterns) {
+      const matches = pageText.match(pattern);
+      if (matches && matches[1]) {
+        const pageNum = parseInt(matches[1], 10);
+        // 유효한 페이지 번호인지 확인 (1-999 범위)
+        if (pageNum >= 1 && pageNum <= 999) {
+          console.log(`페이지 ${pageIndex}에서 실제 페이지 번호 ${pageNum} 발견`);
+          return pageNum;
+        }
+      }
+    }
+    
+    // 2. 페이지 텍스트에서 숫자 패턴 분석
+    const numbers = pageText.match(/\d+/g);
+    if (numbers) {
+      // 페이지 끝 부분의 숫자들을 확인
+      const endNumbers = numbers.slice(-3); // 마지막 3개 숫자
+      for (const num of endNumbers.reverse()) {
+        const pageNum = parseInt(num, 10);
+        if (pageNum >= 1 && pageNum <= 999) {
+          console.log(`페이지 ${pageIndex}에서 추정 페이지 번호 ${pageNum} 발견`);
+          return pageNum;
+        }
+      }
+    }
+    
+    // 3. 찾지 못하면 순차 인덱스 사용 (fallback)
+    console.warn(`페이지 ${pageIndex}에서 실제 페이지 번호를 찾지 못함, 순차 인덱스 ${pageIndex} 사용`);
+    return pageIndex;
+  }
+
   // PDF 파싱 함수 (CDN에서 로드된 PDF.js 사용)
   async parsePdfFromUrl(url: string): Promise<string> {
     try {
@@ -469,12 +521,23 @@ export class GeminiService {
       
       let fullText = '';
       
+      console.log(`PDF 총 페이지 수: ${pdf.numPages}`);
+      
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((item: any) => item.str).join(' ');
-        // 실제 PDF 페이지 번호를 주석으로 추가
-        fullText += `[PAGE_${i}] ${pageText}\n\n`;
+        
+        // 실제 페이지 번호 추출
+        const actualPageNumber = this.extractActualPageNumber(pageText, i);
+        
+        // 실제 페이지 번호로 마커 생성
+        fullText += `[PAGE_${actualPageNumber}] ${pageText}\n\n`;
+        
+        // 디버깅을 위한 로그
+        if (i <= 5 || i % 10 === 0) {
+          console.log(`PDF.js 페이지 ${i} → 실제 페이지 ${actualPageNumber}`);
+        }
       }
       
       return fullText;
