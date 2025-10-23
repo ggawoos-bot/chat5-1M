@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message as MessageType, Role } from '../types';
 import Message from './Message';
 import MessageInput from './MessageInput';
-import { ParsedCitation } from '../utils/citationParser';
 
 interface ChatWindowProps {
   onSendMessage: (message: string) => Promise<string>;
@@ -11,7 +10,6 @@ interface ChatWindowProps {
   resetTrigger?: number; // 리셋 트리거 (키 값)
   isLoading?: boolean;
   placeholder?: string;
-  onCitationClick?: (citation: ParsedCitation) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ 
@@ -20,8 +18,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onResetMessages,
   resetTrigger,
   isLoading = false, 
-  placeholder,
-  onCitationClick
+  placeholder 
 }) => {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -128,7 +125,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
         
         {messages.map((message) => (
-          <Message key={message.id} message={message} onCitationClick={onCitationClick} />
+          <Message key={message.id} message={message} />
         ))}
         
         {isProcessing && (

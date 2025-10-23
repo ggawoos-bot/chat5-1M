@@ -3,7 +3,6 @@ import ChatWindow from './components/ChatWindow';
 import SourceInfo from './components/SourceInfo';
 import CompressionStats from './components/CompressionStats';
 import ConfirmDialog from './components/ConfirmDialog';
-import PdfViewer from './components/PdfViewer';
 import { geminiService } from './services/geminiService';
 import { SourceInfo as SourceInfoType } from './types';
 
@@ -15,13 +14,6 @@ function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [chatKey, setChatKey] = useState(0); // ChatWindow 리렌더링을 위한 키
-  
-  // PDF 뷰어 상태
-  const [pdfViewer, setPdfViewer] = useState({
-    isOpen: false,
-    documentName: '',
-    initialPage: 1
-  });
 
   // 앱 시작 시 PDF 소스 로드 (압축 기능 포함 + 진행률 표시)
   useEffect(() => {
@@ -61,29 +53,6 @@ function App() {
 
   const handleStreamingMessage = async (message: string): Promise<AsyncGenerator<string, void, unknown>> => {
     return await geminiService.generateStreamingResponse(message);
-  };
-
-  // 문서 클릭 핸들러
-  const handleDocumentClick = (source: SourceInfoType) => {
-    setPdfViewer({
-      isOpen: true,
-      documentName: source.title,
-      initialPage: 1
-    });
-  };
-
-  // PDF 뷰어 닫기
-  const handleClosePdfViewer = () => {
-    setPdfViewer(prev => ({ ...prev, isOpen: false }));
-  };
-
-  // 인용 클릭 핸들러
-  const handleCitationClick = (citation: any) => {
-    setPdfViewer({
-      isOpen: true,
-      documentName: citation.documentName,
-      initialPage: citation.page || 1
-    });
   };
 
 
@@ -222,7 +191,7 @@ function App() {
             
             <div className="space-y-2">
               <h3 className="text-md font-medium text-brand-text-primary">현재 자료</h3>
-              <SourceInfo sources={sources} onDocumentClick={handleDocumentClick} />
+              <SourceInfo sources={sources} />
             </div>
           </div>
 
@@ -235,7 +204,6 @@ function App() {
               onResetMessages={() => setMessages([])}
               resetTrigger={chatKey} // 리셋 트리거 전달
               placeholder="금연사업 관련 문의사항을 입력하세요..."
-              onCitationClick={handleCitationClick}
             />
           </div>
         </div>
@@ -258,14 +226,6 @@ function App() {
         onConfirm={confirmReset}
         onCancel={() => setShowResetConfirm(false)}
         isDestructive={true}
-      />
-
-      {/* PDF 뷰어 모달 */}
-      <PdfViewer
-        isOpen={pdfViewer.isOpen}
-        onClose={handleClosePdfViewer}
-        documentName={pdfViewer.documentName}
-        initialPage={pdfViewer.initialPage}
       />
     </div>
   );
