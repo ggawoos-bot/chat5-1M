@@ -30,10 +30,12 @@ IMPORTANT INSTRUCTIONS:
     | Data 1   | Data 2   | Data 3   |
 14. Always include the separator row (---) between header and data rows
 15. For source citations in tables, use appropriate reference format based on document type:
-    - LEGAL DOCUMENTS (법령): Use article references (조항)
-      * "건강증진법(제1조)" for 국민건강증진법률 시행령 시행규칙
-      * "질서위반행위규제법(제16조제1항)" for 질서위반행위규제법 및 시행령
-      * "질서위반행위규제법(제18조제1항제1호)" for detailed article references
+    - LEGAL DOCUMENTS (법령): Use specific law type with article references (조항)
+      * "국민건강증진법 제1조" for 국민건강증진법률 시행령 시행규칙 (법률 조항)
+      * "국민건강증진법 시행령 제1조제1항" for 국민건강증진법률 시행령 시행규칙 (시행령 조항)
+      * "국민건강증진법 시행규칙 제1조제1항" for 국민건강증진법률 시행령 시행규칙 (시행규칙 조항)
+      * "질서위반행위규제법 제16조제1항" for 질서위반행위규제법 및 시행령 (법률 조항)
+      * "질서위반행위규제법 시행령 제16조제1항" for 질서위반행위규제법 및 시행령 (시행령 조항)
     - NON-LEGAL DOCUMENTS (일반문서): Use simplified document names with page references
       * "금연구역 지정 관리 업무지침, p.7" for 금연구역 지정 관리 업무지침_2025개정판
       * "유치원 어린이집 가이드라인, p.2" for 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인
@@ -42,19 +44,24 @@ IMPORTANT INSTRUCTIONS:
       * For legal documents: Use [ARTICLE_X] markers to find article references
       * For non-legal documents: Use [PAGE_X] markers to find page references
       * When information appears in multiple articles/pages, include ALL relevant references
-      * For multiple articles: "건강증진법(제1조, 제3조, 제5조)" instead of just "건강증진법(제1조)"
+      * For multiple articles: "국민건강증진법 제1조, 제3조, 제5조" instead of just "국민건강증진법 제1조"
       * For multiple pages: "금연구역 지정 관리 업무지침, p.7, p.9, p.12" instead of just "금연구역 지정 관리 업무지침, p.7"
       * Group references by document and separate different documents with commas
-      * Use simplified document names as follows:
+      * Use specific law type names as follows:
+        - "국민건강증진법" for 법률 조항
+        - "국민건강증진법 시행령" for 시행령 조항
+        - "국민건강증진법 시행규칙" for 시행규칙 조항
+        - "질서위반행위규제법" for 법률 조항
+        - "질서위반행위규제법 시행령" for 시행령 조항
         - "금연구역 지정 관리 업무지침" for 금연구역 지정 관리 업무지침_2025개정판
         - "유치원 어린이집 가이드라인" for 유치원, 어린이집 경계 10m 금연구역 관리 가이드라인
         - "금연지원서비스 매뉴얼" for 금연지원서비스 통합시스템 사용자매뉴얼
         - "니코틴보조제 가이드라인" for 니코틴보조제 이용방법 가이드라인_230320
         - "지역사회 통합건강증진사업 안내서" for 2025년 지역사회 통합건강증진사업 안내서(금연)
-      * Example: "건강증진법(제1조, 제3조), 금연구역 지정 관리 업무지침, p.7, p.9, p.12, 금연지원서비스 매뉴얼, p.15"
+      * Example: "국민건강증진법 제1조, 제3조, 국민건강증진법 시행령 제5조제1항, 금연구역 지정 관리 업무지침, p.7, p.9, p.12"
 16. If the table already includes a "출처" or "관련 출처" column, do NOT add a separate 참조문서 section below
 17. If the table does NOT have a source column, then add a "참조문서" section below with full document names and page numbers
-18. IMPORTANT: If sources are already cited inline within the main text (e.g., "(건강증진법, p.6, 7; 업무지침, p.9)"), do NOT add a separate 참조문서 section below
+18. IMPORTANT: If sources are already cited inline within the main text (e.g., "(국민건강증진법, p.6, 7; 업무지침, p.9)"), do NOT add a separate 참조문서 section below
 19. Only add 참조문서 section when sources are NOT already mentioned in the main content
 20. When citing sources, include page numbers or section references when available
 21. BEFORE FINALIZING YOUR RESPONSE - VERIFICATION STEPS:
@@ -65,8 +72,11 @@ IMPORTANT INSTRUCTIONS:
     * If unsure, include more pages rather than fewer
 22. Format the 참조문서 section (only when needed) as follows:
     ### 참조문서
-    - **건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조, 제3조, 제5조
+    - **국민건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조, 제3조, 제5조
+    - **국민건강증진법 시행령**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조제1항, 제2조제2항
+    - **국민건강증진법 시행규칙**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조제1항, 제3조제1항제1호
     - **질서위반행위규제법**: 질서위반행위규제법 및 시행령(20210101) - 제16조제1항, 제18조제1항
+    - **질서위반행위규제법 시행령**: 질서위반행위규제법 및 시행령(20210101) - 제1조제1항, 제2조제2항
     - **금연구역 지정 관리 업무지침**: p.2, p.4, p.6, p.60, p.105, p.108
     - **유치원 어린이집 가이드라인**: p.1, p.2, p.3
     - **금연지원서비스 매뉴얼**: p.7, p.9
@@ -74,20 +84,22 @@ IMPORTANT INSTRUCTIONS:
 
 23. EXAMPLES OF PROPER CITATIONS:
     - Legal documents (articles):
-      * Single article: "건강증진법(제1조)"
-      * Multiple articles: "건강증진법(제1조, 제3조, 제5조)"
-      * Detailed article: "질서위반행위규제법(제16조제1항제1호)"
-      * Multiple detailed: "질서위반행위규제법(제16조제1항, 제18조제1항제1호)"
+      * Single article: "국민건강증진법 제1조"
+      * Multiple articles: "국민건강증진법 제1조, 제3조, 제5조"
+      * Enforcement decree: "국민건강증진법 시행령 제1조제1항"
+      * Enforcement rule: "국민건강증진법 시행규칙 제1조제1항제1호"
+      * Multiple detailed: "질서위반행위규제법 제16조제1항, 제18조제1항제1호"
     - Non-legal documents (pages):
       * Single page: "금연구역 지정 관리 업무지침, p.7"
       * Multiple pages: "금연구역 지정 관리 업무지침, p.7, p.9, p.12"
       * Page range: "금연구역 지정 관리 업무지침, p.7-p.9"
       * Mixed: "금연구역 지정 관리 업무지침, p.4, p.7-p.9, p.12"
-    - Mixed documents: "건강증진법(제1조, 제3조), 금연구역 지정 관리 업무지침, p.7, p.9, p.12"
+    - Mixed documents: "국민건강증진법 제1조, 제3조, 국민건강증진법 시행령 제5조제1항, 금연구역 지정 관리 업무지침, p.7, p.9, p.12"
     
     WRONG EXAMPLES TO AVOID:
-    - Using page numbers for legal documents: "건강증진법(p.3)" ❌
+    - Using page numbers for legal documents: "국민건강증진법(p.3)" ❌
     - Using articles for non-legal documents: "금연구역 지정 관리 업무지침(제1조)" ❌
+    - Not distinguishing law types: "국민건강증진법 제1조" for 시행령 조항 ❌
     - Using verbose document names: "업무지침_2025개정판 - 항까지의 규정(p.12)" ❌
     - Missing references when information spans multiple articles/pages
     - Inconsistent citation format within the same response
@@ -477,9 +489,14 @@ export class GeminiService {
     );
   }
 
-  // 법령 조항을 추출하는 메서드
-  private extractLegalArticles(pageText: string): string[] {
+  // 법령 조항을 추출하는 메서드 (시행령/시행규칙 구분)
+  private extractLegalArticles(pageText: string, filename: string): string[] {
     const articles: string[] = [];
+    
+    // 파일명에서 법령 유형 판단
+    const isEnforcementDecree = filename.includes('시행령');
+    const isEnforcementRule = filename.includes('시행규칙');
+    const isMainLaw = !isEnforcementDecree && !isEnforcementRule;
     
     // 법령 조항 패턴들
     const articlePatterns = [
@@ -503,8 +520,19 @@ export class GeminiService {
       }
     });
     
+    // 법령 유형에 따라 접두사 추가
+    const prefixedArticles = articles.map(article => {
+      if (isEnforcementDecree) {
+        return `시행령 ${article}`;
+      } else if (isEnforcementRule) {
+        return `시행규칙 ${article}`;
+      } else {
+        return article; // 기본 법률은 접두사 없음
+      }
+    });
+    
     // 중복 제거 및 정렬
-    return [...new Set(articles)].sort((a, b) => {
+    return [...new Set(prefixedArticles)].sort((a, b) => {
       // 숫자 순으로 정렬
       const aNum = a.match(/\d+/g)?.map(Number) || [0];
       const bNum = b.match(/\d+/g)?.map(Number) || [0];
@@ -622,8 +650,8 @@ export class GeminiService {
         }
         
         if (isLegal) {
-          // 법령 문서의 경우 조항 추출
-          const articles = this.extractLegalArticles(pageText);
+          // 법령 문서의 경우 조항 추출 (파일명 전달)
+          const articles = this.extractLegalArticles(pageText, filename);
           if (articles.length > 0) {
             // 조항이 있는 경우 조항으로 마커 생성
             const articleMarkers = articles.map(article => `[ARTICLE_${article}]`).join(' ');

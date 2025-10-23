@@ -299,46 +299,62 @@
               );
           };
 
-          // 법령 조항을 추출하는 함수
-          const extractLegalArticles = (pageText) => {
-              const articles = [];
-              
-              // 법령 조항 패턴들
-              const articlePatterns = [
-                  // "제1조" 형태
-                  /제(\d+)조/g,
-                  // "제1조제1항" 형태
-                  /제(\d+)조제(\d+)항/g,
-                  // "제1조제1항제1호" 형태
-                  /제(\d+)조제(\d+)항제(\d+)호/g,
-                  // "제1조제1항제1호가목" 형태
-                  /제(\d+)조제(\d+)항제(\d+)호([가-힣])목/g,
-                  // "제1조제1항제1호가목1" 형태
-                  /제(\d+)조제(\d+)항제(\d+)호([가-힣])목(\d+)/g
-              ];
-              
-              // 각 패턴에 대해 매칭
-              articlePatterns.forEach(pattern => {
-                  const matches = pageText.match(pattern);
-                  if (matches) {
-                      articles.push(...matches);
-                  }
-              });
-              
-              // 중복 제거 및 정렬
-              return [...new Set(articles)].sort((a, b) => {
-                  // 숫자 순으로 정렬
-                  const aNum = a.match(/\d+/g)?.map(Number) || [0];
-                  const bNum = b.match(/\d+/g)?.map(Number) || [0];
-                  
-                  for (let i = 0; i < Math.max(aNum.length, bNum.length); i++) {
-                      const aVal = aNum[i] || 0;
-                      const bVal = bNum[i] || 0;
-                      if (aVal !== bVal) return aVal - bVal;
-                  }
-                  return 0;
-              });
-          };
+// 법령 조항을 추출하는 함수 (시행령/시행규칙 구분)
+const extractLegalArticles = (pageText, filename) => {
+  const articles = [];
+  
+  // 파일명에서 법령 유형 판단
+  const isEnforcementDecree = filename.includes('시행령');
+  const isEnforcementRule = filename.includes('시행규칙');
+  const isMainLaw = !isEnforcementDecree && !isEnforcementRule;
+  
+  // 법령 조항 패턴들
+  const articlePatterns = [
+    // "제1조" 형태
+    /제(\d+)조/g,
+    // "제1조제1항" 형태
+    /제(\d+)조제(\d+)항/g,
+    // "제1조제1항제1호" 형태
+    /제(\d+)조제(\d+)항제(\d+)호/g,
+    // "제1조제1항제1호가목" 형태
+    /제(\d+)조제(\d+)항제(\d+)호([가-힣])목/g,
+    // "제1조제1항제1호가목1" 형태
+    /제(\d+)조제(\d+)항제(\d+)호([가-힣])목(\d+)/g
+  ];
+  
+  // 각 패턴에 대해 매칭
+  articlePatterns.forEach(pattern => {
+    const matches = pageText.match(pattern);
+    if (matches) {
+      articles.push(...matches);
+    }
+  });
+  
+  // 법령 유형에 따라 접두사 추가
+  const prefixedArticles = articles.map(article => {
+    if (isEnforcementDecree) {
+      return `시행령 ${article}`;
+    } else if (isEnforcementRule) {
+      return `시행규칙 ${article}`;
+    } else {
+      return article; // 기본 법률은 접두사 없음
+    }
+  });
+  
+  // 중복 제거 및 정렬
+  return [...new Set(prefixedArticles)].sort((a, b) => {
+    // 숫자 순으로 정렬
+    const aNum = a.match(/\d+/g)?.map(Number) || [0];
+    const bNum = b.match(/\d+/g)?.map(Number) || [0];
+    
+    for (let i = 0; i < Math.max(aNum.length, bNum.length); i++) {
+      const aVal = aNum[i] || 0;
+      const bVal = bNum[i] || 0;
+      if (aVal !== bVal) return aVal - bVal;
+    }
+    return 0;
+  });
+};
 
           // 실제 PDF 페이지 번호를 추출하는 함수 (개선된 버전)
           const extractActualPageNumber = (pageText, pageIndex) => {
@@ -434,8 +450,8 @@
                       }
                       
                       if (isLegal) {
-                          // 법령 문서의 경우 조항 추출
-                          const articles = extractLegalArticles(pageText);
+                          // 법령 문서의 경우 조항 추출 (파일명 전달)
+                          const articles = extractLegalArticles(pageText, filename);
                           if (articles.length > 0) {
                               // 조항이 있는 경우 조항으로 마커 생성
                               const articleMarkers = articles.map(article => `[ARTICLE_${article}]`).join(' ');
