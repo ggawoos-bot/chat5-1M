@@ -31,18 +31,125 @@ export class PDFCompressionService {
       '지정', '관리', '업무', '지침', '서비스', '통합',
       '사업', '지원', '규정', '법률', '조항', '항목',
       '절차', '방법', '기준', '요건', '조건', '제한',
+      
+      // 건물/시설 관련 키워드 (필로티 포함)
+      '필로티', '건물', '구조', '층', '공간', '시설', '건축',
+      '부지', '경계', '지하', '지상', '옥상', '현관', '로비',
+      '복도', '계단', '엘리베이터', '주차장', '입구', '출입구',
+      '창고', '대문', '문', '창문', '벽', '천장', '바닥',
+      '지붕', '테라스', '발코니', '베란다', '마당', '정원',
+      '주차공간', '보행로', '통로', '홀', '대기실', '사무실',
+      '회의실', '강의실', '교실', '병실', '진료실', '수술실',
+      
+      // 법적 용어 확장
+      '법령', '규정', '지침', '고시', '공고', '안내', '가이드',
+      '매뉴얼', '해설', '해석', '적용', '범위', '대상', '조건',
+      '의무', '권한', '책임', '기능', '역할', '소관', '관할',
+      '법적', '법적근거', '법적효력', '법적구속력', '법적효과',
+      
+      // 행정 용어 확장
+      '신고', '신청', '처리', '심사', '승인', '허가', '등록',
+      '변경', '취소', '정지', '폐지', '해제', '위반', '과태료',
+      '벌금', '처벌', '제재', '조치', '명령', '지시', '통보',
+      '고발', '고소', '소송', '재판', '판결', '집행', '강제집행',
+      
+      // 시설 유형 확장
+      '의료기관', '학교', '공공기관', '대중교통수단', '어린이집',
+      '유치원', '보육원', '복지시설', '체육시설', '문화시설',
+      '상업시설', '업무시설', '주거시설', '공원', '광장',
+      '도서관', '박물관', '미술관', '극장', '영화관', '카페',
+      '식당', '음식점', '상점', '마트', '백화점', '시장',
+      '호텔', '펜션', '모텔', '게스트하우스', '숙박시설',
+      '교회', '절', '성당', '사원', '종교시설',
+      '은행', '보험', '금융기관', '증권', '금융시설',
+      
       // 추가 중요 키워드
       '신고', '신청', '처리', '심사', '승인', '허가',
       '등록', '변경', '취소', '정지', '폐지', '해제',
       '위반', '과태료', '벌금', '처벌', '제재', '조치',
       '시설', '장소', '구역', '지역', '범위', '대상',
       '기관', '단체', '조직', '협회', '연합', '연합회',
-      '담당', '책임', '의무', '권한', '기능', '역할'
+      '담당', '책임', '의무', '권한', '기능', '역할',
+      
+      // 동적 키워드 플레이스홀더
+      'DYNAMIC_KEYWORDS'
     ],
     minChunkSize: 1000,
     maxChunkSize: 10000,
     maxChunks: 50
   };
+
+  /**
+   * PDF 텍스트에서 모든 한글 단어를 추출하여 키워드 목록에 추가
+   */
+  private extractDynamicKeywords(text: string): string[] {
+    // 모든 한글 단어 추출 (2글자 이상)
+    const koreanWords = text.match(/[가-힣]+/g) || [];
+    const uniqueWords = [...new Set(koreanWords)];
+    
+    // 2글자 이상이고, 너무 일반적인 단어 제외
+    const filteredWords = uniqueWords.filter(word => {
+      return word.length >= 2 && 
+             word.length <= 10 && // 너무 긴 단어 제외
+             !this.isCommonWord(word); // 일반적인 단어 제외
+    });
+    
+    // 빈도순으로 정렬하여 상위 100개만 선택
+    const wordFreq = {};
+    filteredWords.forEach(word => {
+      wordFreq[word] = (wordFreq[word] || 0) + 1;
+    });
+    
+    return Object.entries(wordFreq)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 100)
+      .map(([word]) => word);
+  }
+  
+  /**
+   * 일반적인 단어인지 확인
+   */
+  private isCommonWord(word: string): boolean {
+    const commonWords = [
+      '것', '이', '그', '저', '의', '을', '를', '에', '에서', '로', '으로',
+      '와', '과', '는', '은', '가', '이', '다', '하다', '있다', '없다',
+      '되다', '하다', '보다', '같다', '다르다', '크다', '작다', '많다', '적다',
+      '좋다', '나쁘다', '새', '오래', '빠르다', '느리다', '높다', '낮다',
+      '여기', '저기', '어디', '언제', '어떻게', '왜', '무엇', '누구',
+      '모든', '전체', '일부', '대부분', '일부', '모든', '각', '모든'
+    ];
+    return commonWords.includes(word);
+  }
+
+  /**
+   * 개선된 압축 처리 (동적 키워드 포함)
+   */
+  async compressPdfContentWithDynamicKeywords(
+    fullText: string, 
+    options: Partial<CompressionOptions> = {}
+  ): Promise<CompressionResult> {
+    // 1. 동적 키워드 추출
+    const dynamicKeywords = this.extractDynamicKeywords(fullText);
+    console.log(`동적 키워드 추출: ${dynamicKeywords.length}개`);
+    
+    // 2. 기존 키워드와 동적 키워드 결합
+    const allKeywords = [
+      ...PDFCompressionService.DEFAULT_OPTIONS.preserveKeywords.filter(k => k !== 'DYNAMIC_KEYWORDS'),
+      ...dynamicKeywords
+    ];
+    
+    // 3. 키워드 중복 제거
+    const uniqueKeywords = [...new Set(allKeywords)];
+    console.log(`총 키워드 수: ${uniqueKeywords.length}개`);
+    
+    // 4. 확장된 키워드로 압축 처리
+    const extendedOptions = {
+      ...options,
+      preserveKeywords: uniqueKeywords
+    };
+    
+    return this.compressPdfContent(fullText, extendedOptions);
+  }
 
   /**
    * PDF 텍스트를 품질을 유지하면서 압축 (에러 처리 포함 + 성능 최적화)

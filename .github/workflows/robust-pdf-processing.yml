@@ -1,0 +1,203 @@
+name: Robust PDF Processing
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'public/pdf/**'
+      - 'scripts/**'
+  workflow_dispatch:
+    inputs:
+      chunkSize:
+        description: '청크 크기 (문자 수)'
+        required: true
+        default: '2000'
+        type: string
+      overlapSize:
+        description: '오버랩 크기 (문자 수)'
+        required: true
+        default: '200'
+        type: string
+      forceReprocess:
+        description: '강제 재처리'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  process-pdfs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # 타임아웃 설정
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Verify PDF files
+      run: |
+        echo "📋 PDF 파일 확인 중..."
+        ls -la public/pdf/
+        echo "📄 PDF 파일 수: $(ls public/pdf/*.pdf | wc -l)"
+        
+        # PDF 파일 존재 확인
+        if [ ! -f "public/pdf/manifest.json" ]; then
+          echo "❌ manifest.json 파일이 없습니다."
+          exit 1
+        fi
+        
+        # PDF 파일 크기 확인
+        for pdf in public/pdf/*.pdf; do
+          if [ -f "$pdf" ]; then
+            size=$(stat -c%s "$pdf")
+            echo "📄 $(basename "$pdf"): ${size} bytes"
+            if [ $size -lt 1000 ]; then
+              echo "⚠️ 경고: $(basename "$pdf") 파일이 너무 작습니다."
+            fi
+          fi
+        done
+        
+    - name: Process PDFs with robust error handling
+      run: |
+        echo "🚀 강화된 PDF 처리 시작..."
+        echo "환경변수 설정:"
+        echo "  CHUNK_SIZE: ${{ github.event.inputs.chunkSize || 2000 }}"
+        echo "  OVERLAP_SIZE: ${{ github.event.inputs.overlapSize || 200 }}"
+        echo "  FORCE_REPROCESS: ${{ github.event.inputs.forceReprocess || false }}"
+        
+        # 환경변수 설정
+        export CHUNK_SIZE=${{ github.event.inputs.chunkSize || 2000 }}
+        export OVERLAP_SIZE=${{ github.event.inputs.overlapSize || 200 }}
+        export FORCE_REPROCESS=${{ github.event.inputs.forceReprocess || false }}
+        export GITHUB_ACTIONS=true
+        
+        # 강화된 PDF 처리 스크립트 실행
+        node scripts/robust-pdf-preprocess.js
+        
+        echo "✅ PDF 처리 완료!"
+      env:
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        
+    - name: Validate processed data
+      run: |
+        echo "🔍 처리된 데이터 검증 중..."
+        
+        if [ ! -f "public/data/processed-pdfs.json" ]; then
+          echo "❌ processed-pdfs.json 파일이 생성되지 않았습니다."
+          exit 1
+        fi
+        
+        # JSON 파일 유효성 검사
+        if ! jq empty public/data/processed-pdfs.json; then
+          echo "❌ processed-pdfs.json이 유효한 JSON이 아닙니다."
+          exit 1
+        fi
+        
+        # 데이터 품질 검사
+        success_count=$(jq '.successfulFiles' public/data/processed-pdfs.json)
+        total_count=$(jq '.totalFiles' public/data/processed-pdfs.json)
+        failed_count=$(jq '.failedFiles' public/data/processed-pdfs.json)
+        
+        echo "📊 처리 결과:"
+        echo "  총 파일: $total_count"
+        echo "  성공: $success_count"
+        echo "  실패: $failed_count"
+        
+        # 실패율이 50% 이상이면 오류
+        if [ "$failed_count" -gt 0 ] && [ "$((failed_count * 100 / total_count))" -gt 50 ]; then
+          echo "❌ 실패율이 50%를 초과했습니다."
+          exit 1
+        fi
+        
+        # 필로티 검색 테스트
+        if grep -q "필로티" public/data/processed-pdfs.json; then
+          echo "✅ 필로티 검색 가능 확인"
+        else
+          echo "⚠️ 경고: 필로티 검색 불가능"
+        fi
+        
+        # 가짜 데이터 검사
+        if grep -q "제1조(목적) 이 법령은 국민의 건강증진을 위한 금연사업의 효율적 추진을 위하여" public/data/processed-pdfs.json; then
+          echo "❌ 가짜 데이터 감지!"
+          exit 1
+        else
+          echo "✅ 가짜 데이터 없음"
+        fi
+        
+    - name: Run data validation script
+      run: |
+        echo "🔍 데이터 품질 검증 스크립트 실행..."
+        node scripts/validate-processed-data.js
+        
+    - name: Check for changes
+      id: changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changes=true" >> $GITHUB_OUTPUT
+          echo "변경사항이 감지되었습니다."
+        else
+          echo "changes=false" >> $GITHUB_OUTPUT
+          echo "변경사항이 없습니다."
+        fi
+        
+    - name: Commit and push changes
+      if: steps.changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add public/data/processed-pdfs.json
+        git add dist/data/processed-pdfs.json
+        git commit -m "Update processed-pdfs.json with robust processing [skip ci]
+
+        - 청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}자
+        - 오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}자
+        - 처리 시간: $(date)
+        - 환경: GitHub Actions
+        - 품질 개선: 가짜 데이터 차단, 모든 단어 검색 가능"
+        git push
+        
+    - name: Build and deploy
+      if: steps.changes.outputs.changes == 'true'
+      run: |
+        echo "🏗️ 빌드 시작..."
+        npm run build
+        echo "✅ 빌드 완료!"
+      env:
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        
+    - name: Setup Pages
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/configure-pages@v4
+      
+    - name: Upload artifact
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./dist
+        
+    - name: Deploy to GitHub Pages
+      if: steps.changes.outputs.changes == 'true'
+      uses: actions/deploy-pages@v4
+      
+    - name: Notify completion
+      run: |
+        echo "🎉 강화된 PDF 처리 완료!"
+        echo "📊 처리 결과:"
+        echo "  성공: $(jq '.successfulFiles' public/data/processed-pdfs.json)개"
+        echo "  실패: $(jq '.failedFiles' public/data/processed-pdfs.json)개"
+        echo "  변경사항: ${{ steps.changes.outputs.changes }}"
+        echo "  필로티 검색: $(grep -q "필로티" public/data/processed-pdfs.json && echo "가능" || echo "불가능")"
+        echo "  가짜 데이터: $(grep -q "제1조(목적) 이 법령은 국민의 건강증진을 위한 금연사업의 효율적 추진을 위하여" public/data/processed-pdfs.json && echo "감지됨" || echo "없음")"
