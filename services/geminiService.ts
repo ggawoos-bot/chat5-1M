@@ -124,6 +124,67 @@ export class GeminiService {
   private ai: GoogleGenAI | null = null;
   private currentChatSession: any = null;
   private cachedSourceText: string | null = null;
+
+  /**
+   * 문서 유형 판별 함수
+   */
+  private getDocumentType(filename: string): 'legal' | 'guideline' {
+    if (filename.includes('국민건강증진법률 시행령 시행규칙')) {
+      return 'legal'; // 법령 문서
+    }
+    if (filename.includes('질서위반행위규제법')) {
+      return 'legal'; // 법령 문서
+    }
+    return 'guideline'; // 업무지침, 매뉴얼 등
+  }
+
+  /**
+   * 청크에서 출처 정보 생성 (문서 유형별 처리)
+   */
+  private generateSourceInfoFromChunks(chunks: Chunk[]): SourceInfo[] {
+    const sourceMap = new Map<string, SourceInfo>();
+    
+    chunks.forEach(chunk => {
+      const docType = chunk.metadata?.documentType || 'guideline';
+      const filename = chunk.metadata?.source || chunk.location?.document || 'unknown';
+      
+      if (docType === 'legal') {
+        // 법령 문서: 조항 기반 출처
+        const articles = chunk.metadata?.articles || [];
+        const mainArticle = articles[0] || chunk.location?.section || '일반';
+        
+        const sourceKey = `${filename}-${mainArticle}`;
+        if (!sourceMap.has(sourceKey)) {
+          sourceMap.set(sourceKey, {
+            id: sourceKey,
+            title: filename.replace('.pdf', ''),
+            type: 'pdf',
+            section: mainArticle,
+            page: null,
+            documentType: 'legal'
+          });
+        }
+      } else {
+        // 일반 문서: 페이지 번호 기반 출처
+        const pageNumber = chunk.metadata?.pageNumber || chunk.location?.page;
+        const section = chunk.location?.section || '일반';
+        
+        const sourceKey = `${filename}-${pageNumber}-${section}`;
+        if (!sourceMap.has(sourceKey)) {
+          sourceMap.set(sourceKey, {
+            id: sourceKey,
+            title: filename.replace('.pdf', ''),
+            type: 'pdf',
+            section: section,
+            page: pageNumber,
+            documentType: 'guideline'
+          });
+        }
+      }
+    });
+    
+    return Array.from(sourceMap.values());
+  }
   private isInitialized: boolean = false;
   private compressionResult: CompressionResult | null = null;
   private allChunks: Chunk[] = [];
@@ -426,13 +487,17 @@ export class GeminiService {
         return;
       }
 
-      // PDF 파일명을 SourceInfo 객체로 변환
-      this.sources = pdfFiles.map((fileName, index) => ({
-        id: (index + 1).toString(),
-        title: fileName,
-        content: '', // 실제 내용은 PDF 파싱 시에 로드됨
-        type: 'pdf' as const
-      }));
+      // PDF 파일명을 SourceInfo 객체로 변환 (문서 유형별 처리)
+      this.sources = pdfFiles.map((fileName, index) => {
+        const docType = this.getDocumentType(fileName);
+        return {
+          id: (index + 1).toString(),
+          title: fileName,
+          content: '', // 실제 내용은 PDF 파싱 시에 로드됨
+          type: 'pdf' as const,
+          documentType: docType
+        };
+      });
 
       console.log('Dynamic sources loaded:', this.sources);
     } catch (error) {
@@ -1382,6 +1447,17 @@ export class GeminiService {
             chunks: relevantChunks.map(c => ({ title: c.metadata.title, section: c.location.section }))
           });
 
+          // 2.5. 청크에서 출처 정보 생성 (문서 유형별 처리)
+          const sourceInfo = this.generateSourceInfoFromChunks(relevantChunks);
+          log.info('출처 정보 생성 완료', { 
+            sources: sourceInfo.map(s => ({ 
+              title: s.title, 
+              section: s.section, 
+              page: s.page,
+              documentType: s.documentType 
+            }))
+          });
+
           // 3. 선택된 컨텍스트로 새 세션 생성 (개선된 포맷팅)
           const contextText = relevantChunks
             .map((chunk, index) => {
@@ -1445,6 +1521,90 @@ export class GeminiService {
         })();
       });
     }, '스트리밍 응답 생성', { messageLength: message.length });
+  }
+
+  // 출처 정보를 포함한 응답 생성
+  async generateResponseWithSources(message: string): Promise<{ content: string; sources: SourceInfo[] }> {
+    return this.executeWithRetry(async () => {
+      // 매 질문마다 새로운 API 키 선택
+      const selectedApiKey = this.getNextAvailableKey();
+      if (!selectedApiKey) {
+        throw new Error('사용 가능한 API 키가 없습니다.');
+      }
+
+      console.log(`질문 처리 (출처 포함) - API 키: ${selectedApiKey.substring(0, 10)}...`);
+
+      // 새로운 AI 인스턴스 생성 (선택된 키로)
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      
+      // PDF 소스 텍스트 로드
+      if (!this.cachedSourceText) {
+        await this.initializeWithPdfSources();
+      }
+
+      if (!this.cachedSourceText) {
+        throw new Error('PDF 소스를 로드할 수 없습니다.');
+      }
+
+      // 질문 분석
+      const questionAnalysis = await questionAnalyzer.analyzeQuestion(message);
+      
+      // 관련 컨텍스트 선택
+      const relevantChunks = await contextSelector.selectRelevantContext(message, questionAnalysis);
+      
+      // 청크에서 출처 정보 생성 (문서 유형별 처리)
+      const sourceInfo = this.generateSourceInfoFromChunks(relevantChunks);
+
+      // 선택된 컨텍스트로 새 세션 생성
+      const contextText = relevantChunks
+        .map((chunk, index) => {
+          const relevanceScore = (chunk as any).relevanceScore || 0;
+          return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n관련도: ${relevanceScore.toFixed(2)}\n${chunk.content}`;
+        })
+        .join('\n\n---\n\n');
+
+      // 시스템 지시사항과 소스 텍스트 결합
+      const systemInstruction = this.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', contextText);
+      
+      // Gemini API 호출
+      const model = ai.getGenerativeModel({ 
+        model: 'gemini-2.5-flash',
+        systemInstruction: systemInstruction
+      });
+
+      const result = await model.generateContent(message);
+      const response = await result.response;
+      const text = response.text();
+      
+      console.log(`응답 생성 완료 (출처 포함) - 사용된 키: ${selectedApiKey.substring(0, 10)}...`);
+      return { content: text, sources: sourceInfo };
+    }, 3, 1000).catch(error => {
+      console.error('All retry attempts failed:', error);
+      
+      // 사용자 친화적인 오류 메시지 제공
+      if (error.message && (
+        error.message.includes('429') || 
+        error.message.includes('RESOURCE_EXHAUSTED') ||
+        error.message.includes('quota') ||
+        error.message.includes('Quota') ||
+        error.message.includes('rate limit')
+      )) {
+        return { 
+          content: '죄송합니다. 현재 API 사용량이 초과되어 일시적으로 서비스를 이용할 수 없습니다. 잠시 후 다시 시도해주세요.', 
+          sources: [] 
+        };
+      } else if (error.message && error.message.includes('API_KEY_INVALID')) {
+        return { 
+          content: 'API 키에 문제가 있습니다. 관리자에게 문의해주세요.', 
+          sources: [] 
+        };
+      } else {
+        return { 
+          content: '죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 
+          sources: [] 
+        };
+      }
+    });
   }
 
   // 하이브리드 방식: 매 질문마다 새로운 API 키로 AI 인스턴스 생성 + 재시도 로직

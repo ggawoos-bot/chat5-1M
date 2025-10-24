@@ -221,6 +221,105 @@ function isCriticalFile(filename) {
 }
 
 /**
+ * 문서 유형 판별 함수
+ */
+function getDocumentType(filename) {
+  if (filename.includes('국민건강증진법률 시행령 시행규칙')) {
+    return 'legal'; // 법령 문서
+  }
+  if (filename.includes('질서위반행위규제법')) {
+    return 'legal'; // 법령 문서
+  }
+  return 'guideline'; // 업무지침, 매뉴얼 등
+}
+
+/**
+ * 법령 문서용 조항 추출
+ */
+function extractLegalArticles(text) {
+  const articlePatterns = [
+    /제(\d+)조\s*\(([^)]+)\)/g,           // "제1조(목적)"
+    /제(\d+)조제(\d+)항/g,                // "제1조제1항"
+    /제(\d+)조제(\d+)항제(\d+)호/g        // "제1조제1항제1호"
+  ];
+  
+  const articles = [];
+  for (const pattern of articlePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      if (match.length === 3) {
+        articles.push(`제${match[1]}조(${match[2]})`);
+      } else if (match.length === 4) {
+        articles.push(`제${match[1]}조제${match[2]}항`);
+      } else if (match.length === 5) {
+        articles.push(`제${match[1]}조제${match[2]}항제${match[3]}호`);
+      }
+    }
+  }
+  
+  return [...new Set(articles)]; // 중복 제거
+}
+
+/**
+ * 일반 문서용 페이지 번호 추출 (PDF 하단의 실제 페이지 번호)
+ */
+function extractActualPageNumber(text) {
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  // 마지막 10줄에서 페이지 번호 검색 (PDF 하단)
+  const bottomLines = lines.slice(-10);
+  
+  for (let i = bottomLines.length - 1; i >= 0; i--) {
+    const line = bottomLines[i];
+    
+    // PDF 하단의 페이지 번호 패턴들
+    const pagePatterns = [
+      /^(\d+)$/,                    // "15" (단독 숫자)
+      /^페이지\s*(\d+)$/i,          // "페이지 15"
+      /^(\d+)\s*\/\s*\d+$/i,        // "15/124" (분자만 추출)
+      /^(\d+)\s*of\s*\d+$/i,        // "15 of 124"
+      /^p\.\s*(\d+)$/i,             // "p.15"
+      /^P\.\s*(\d+)$/i              // "P.15"
+    ];
+    
+    for (const pattern of pagePatterns) {
+      const match = line.match(pattern);
+      if (match) {
+        const pageNum = parseInt(match[1], 10);
+        if (pageNum >= 1 && pageNum <= 999) {
+          console.log(`실제 페이지 번호 발견: ${pageNum} (라인: "${line}")`);
+          return pageNum;
+        }
+      }
+    }
+  }
+  
+  return null; // 페이지 번호를 찾지 못한 경우
+}
+
+/**
+ * 섹션 제목 추출 (일반 문서용)
+ */
+function extractSectionTitle(text) {
+  const sectionPatterns = [
+    /^제\d+장\s+(.+)$/m,           // "제1장 총칙"
+    /^제\d+조\s*\(([^)]+)\)/m,     // "제1조(목적)"
+    /^(\d+\.\s*[^0-9\n]+)$/m,      // "1. 근거 법령"
+    /^(\d+\)\s*[^0-9\n]+)$/m,      // "1) 근거 법령"
+    /^([가-힣\s]+)\s*\([^)]+\)$/m  // "공동주택 금연구역(「국민건강증진법」 제9조제5항)"
+  ];
+  
+  for (const pattern of sectionPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return match[1] || match[0];
+    }
+  }
+  
+  return '일반';
+}
+
+/**
  * 데이터 품질 검증 (개선된 버전)
  */
 function validateProcessedData(processedData) {
@@ -425,22 +524,64 @@ async function main() {
           throw new Error(`데이터 품질 검증 실패: ${validation.issues.join(', ')}`);
         }
         
-        const processedChunks = chunks.map((content, index) => ({
-          id: `chunk_${String(index).padStart(3, '0')}`,
-          content,
-          metadata: {
-            source: pdfFile,
-            title: pdfFile.replace('.pdf', ''),
-            chunkIndex: index,
-            startPosition: index * 2000,
-            endPosition: Math.min((index + 1) * 2000, compressionResult.compressedText.length)
-          },
-          keywords: ['금연', '건강증진', '필로티'],
-          location: {
-            document: pdfFile,
-            section: '일반'
+        // 청크 생성 시 문서 유형별 처리
+        const processedChunks = chunks.map((content, index) => {
+          const docType = getDocumentType(pdfFile);
+          
+          let location, metadata;
+          
+          if (docType === 'legal') {
+            // 법령 문서: 조항 기반 출처
+            const articles = extractLegalArticles(content);
+            const mainArticle = articles[0] || `제${index + 1}조`;
+            
+            location = {
+              document: pdfFile,
+              section: mainArticle,  // "제1조(목적)"
+              page: null  // 법령은 페이지 번호 사용 안함
+            };
+            
+            metadata = {
+              source: pdfFile,
+              title: pdfFile.replace('.pdf', ''),
+              chunkIndex: index,
+              startPosition: index * 2000,
+              endPosition: Math.min((index + 1) * 2000, compressionResult.compressedText.length),
+              articles: articles,
+              documentType: 'legal'
+            };
+            
+          } else {
+            // 일반 문서: 실제 페이지 번호 기반 출처
+            const actualPageNumber = extractActualPageNumber(content);
+            const sectionTitle = extractSectionTitle(content);
+            
+            location = {
+              document: pdfFile,
+              section: sectionTitle,  // "2. 공동주택 금연구역", "1) 근거 법령" 등
+              page: actualPageNumber || index + 1  // PDF 하단의 실제 페이지 번호
+            };
+            
+            metadata = {
+              source: pdfFile,
+              title: pdfFile.replace('.pdf', ''),
+              chunkIndex: index,
+              startPosition: index * 2000,
+              endPosition: Math.min((index + 1) * 2000, compressionResult.compressedText.length),
+              pageNumber: actualPageNumber || index + 1,
+              sectionTitle: sectionTitle,
+              documentType: 'guideline'
+            };
           }
-        }));
+          
+          return {
+            id: `chunk_${String(index).padStart(3, '0')}`,
+            content,
+            metadata,
+            keywords: ['금연', '건강증진', '필로티'],
+            location
+          };
+        });
         
         console.log(`✅ 청크 생성 완료: ${processedChunks.length}개`);
         
