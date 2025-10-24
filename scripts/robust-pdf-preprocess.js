@@ -483,9 +483,27 @@ async function main() {
       data: results
     };
     
+    // 디렉토리 생성 및 파일 저장
+    const publicDataDir = 'public/data';
+    const distDataDir = 'dist/data';
+    
+    // 디렉토리가 존재하지 않으면 생성
+    if (!fs.existsSync(publicDataDir)) {
+      fs.mkdirSync(publicDataDir, { recursive: true });
+      console.log(`📁 디렉토리 생성: ${publicDataDir}`);
+    }
+    
+    if (!fs.existsSync(distDataDir)) {
+      fs.mkdirSync(distDataDir, { recursive: true });
+      console.log(`📁 디렉토리 생성: ${distDataDir}`);
+    }
+    
     // 파일 저장
-    fs.writeFileSync('public/data/processed-pdfs.json', JSON.stringify(finalData, null, 2));
-    fs.writeFileSync('dist/data/processed-pdfs.json', JSON.stringify(finalData, null, 2));
+    fs.writeFileSync(path.join(publicDataDir, 'processed-pdfs.json'), JSON.stringify(finalData, null, 2));
+    fs.writeFileSync(path.join(distDataDir, 'processed-pdfs.json'), JSON.stringify(finalData, null, 2));
+    
+    console.log(`✅ 파일 저장 완료: ${publicDataDir}/processed-pdfs.json`);
+    console.log(`✅ 파일 저장 완료: ${distDataDir}/processed-pdfs.json`);
     
     console.log('\n🎉 강화된 PDF 처리 완료!');
     console.log('=' * 50);
