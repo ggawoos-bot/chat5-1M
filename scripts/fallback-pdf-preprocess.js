@@ -146,12 +146,32 @@ class SimpleCompressionService {
     const chunks = [];
     let start = 0;
     
+    // 텍스트가 비어있으면 빈 배열 반환
+    if (!text || text.trim().length === 0) {
+      console.warn('⚠️ 텍스트가 비어있어 청크를 생성할 수 없습니다.');
+      return chunks;
+    }
+    
+    // 최소 청크 크기 확인
+    if (text.length < 100) {
+      console.warn('⚠️ 텍스트가 너무 짧아 하나의 청크로 처리합니다.');
+      chunks.push(text);
+      return chunks;
+    }
+    
     while (start < text.length) {
       const end = Math.min(start + chunkSize, text.length);
-      chunks.push(text.substring(start, end));
+      const chunk = text.substring(start, end);
+      
+      // 빈 청크는 제외
+      if (chunk.trim().length > 0) {
+        chunks.push(chunk);
+      }
+      
       start = end;
     }
     
+    console.log(`📦 청크 분할 완료: ${chunks.length}개 (원본: ${text.length}자)`);
     return chunks;
   }
   
