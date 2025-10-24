@@ -875,18 +875,6 @@ export class PDFCompressionService {
       recommendations
     };
   }
-
-  // 압축 통계 가져오기 (호환성을 위한 함수)
-  getCompressionStats(): any {
-    console.log('압축 통계 요청');
-    return {
-      totalChunks: 0,
-      compressedSize: 0,
-      originalSize: 0,
-      compressionRatio: 0,
-      qualityScore: 0
-    };
-  }
 }
 
 // 싱글톤 인스턴스

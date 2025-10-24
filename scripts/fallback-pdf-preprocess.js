@@ -155,110 +155,20 @@ function extractLegalArticles(text) {
 function extractActualPageNumber(text) {
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   
-  // 특정 키워드가 포함된 경우 해당 키워드 주변에서 페이지 번호 찾기 (개선된 버전)
-  const keywords = ['필로티', '옥상', '주차장', '건물 내 2층', 'Q. 필로티', '필로티 구조'];
-  for (const keyword of keywords) {
-    if (text.includes(keyword)) {
-      const keywordIndex = text.indexOf(keyword);
-      
-      // 1. 페이지 마커를 이용한 정확한 페이지 번호 찾기 (새로운 방식)
-      const pageStartMatches = text.match(/--- PAGE_START_(\d+) ---/g);
-      const pageEndMatches = text.match(/--- PAGE_END_(\d+) ---/g);
-      
-      if (pageStartMatches && pageEndMatches) {
-        // 키워드가 포함된 페이지 찾기
-        for (let i = 0; i < pageStartMatches.length; i++) {
-          const startMatch = pageStartMatches[i].match(/--- PAGE_START_(\d+) ---/);
-          const endMatch = pageEndMatches[i].match(/--- PAGE_END_(\d+) ---/);
-          
-          if (startMatch && endMatch) {
-            const pageNum = parseInt(startMatch[1], 10);
-            const startIndex = text.indexOf(pageStartMatches[i]);
-            const endIndex = text.indexOf(pageEndMatches[i]);
-            
-            // 키워드가 이 페이지 범위에 있는지 확인
-            if (keywordIndex >= startIndex && keywordIndex <= endIndex) {
-              console.log(`키워드 "${keyword}"가 페이지 ${pageNum}에 위치함 (페이지 마커 방식)`);
-              return pageNum;
-            }
-          }
-        }
-      }
-      
-      // 2. 기존 방식: 키워드 주변에서 페이지 번호 패턴 검색
-      const contextStart = Math.max(0, keywordIndex - 3000);
-      const contextEnd = Math.min(text.length, keywordIndex + 3000);
-      const context = text.substring(contextStart, contextEnd);
-      const contextLines = context.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-      
-      for (let i = contextLines.length - 1; i >= 0; i--) {
-        const line = contextLines[i];
-        
-        // PDF 하단의 페이지 번호 패턴들 (더 정확한 매칭)
-        const pagePatterns = [
-          /^(\d+)$/,                    // "69" (단독 숫자)
-          /^페이지\s*(\d+)$/i,          // "페이지 69"
-          /^(\d+)\s*\/\s*\d+$/i,        // "69/124" (분자만 추출)
-          /^(\d+)\s*of\s*\d+$/i,        // "69 of 124"
-          /^p\.\s*(\d+)$/i,             // "p.69"
-          /^P\.\s*(\d+)$/i,             // "P.69"
-          /(\d+)\s*\/\s*\d+/,           // "69 / 124" (공백 포함)
-          /페이지\s*(\d+)/,             // "페이지 69" (공백 포함)
-          /p\.\s*(\d+)/i,               // "p.69" (공백 포함)
-          /(\d+)\s*페이지/,             // "69페이지"
-          /(\d+)\s*\/\s*\d+\s*페이지/,  // "69/124페이지"
-          /(\d+)\s*of\s*\d+\s*페이지/   // "69 of 124페이지"
-        ];
-        
-        for (const pattern of pagePatterns) {
-          const match = line.match(pattern);
-          if (match) {
-            const pageNum = parseInt(match[1], 10);
-            if (pageNum >= 1 && pageNum <= 999) {
-              console.log(`키워드 "${keyword}" 주변에서 페이지 번호 발견: ${pageNum} (라인: "${line}")`);
-              return pageNum;
-            }
-          }
-        }
-      }
-      
-      // 3. 추가 검색: 키워드 앞뒤에서 더 넓은 범위로 페이지 번호 찾기
-      const extendedContextStart = Math.max(0, keywordIndex - 5000);
-      const extendedContextEnd = Math.min(text.length, keywordIndex + 5000);
-      const extendedContext = text.substring(extendedContextStart, extendedContextEnd);
-      
-      // "69" 형태의 단독 숫자를 더 넓은 범위에서 찾기
-      const numberMatches = extendedContext.match(/\b(\d{1,3})\b/g);
-      if (numberMatches) {
-        for (const match of numberMatches) {
-          const pageNum = parseInt(match, 10);
-          if (pageNum >= 60 && pageNum <= 80) { // 필로티 관련 내용이 60-80페이지에 있을 가능성
-            console.log(`키워드 "${keyword}" 확장 검색에서 페이지 번호 발견: ${pageNum}`);
-            return pageNum;
-          }
-        }
-      }
-    }
-  }
-  
-  // 마지막 20줄에서 페이지 번호 검색 (PDF 하단) - 더 넓은 범위
-  const bottomLines = lines.slice(-20);
+  // 마지막 10줄에서 페이지 번호 검색 (PDF 하단)
+  const bottomLines = lines.slice(-10);
   
   for (let i = bottomLines.length - 1; i >= 0; i--) {
     const line = bottomLines[i];
     
-    // PDF 하단의 페이지 번호 패턴들 (더 정확한 매칭)
+    // PDF 하단의 페이지 번호 패턴들
     const pagePatterns = [
-      /^(\d+)$/,                    // "69" (단독 숫자)
-      /^페이지\s*(\d+)$/i,          // "페이지 69"
-      /^(\d+)\s*\/\s*\d+$/i,        // "69/124" (분자만 추출)
-      /^(\d+)\s*of\s*\d+$/i,        // "69 of 124"
-      /^p\.\s*(\d+)$/i,             // "p.69"
-      /^P\.\s*(\d+)$/i,             // "P.69"
-      /(\d+)\s*\/\s*\d+/,           // "69 / 124" (공백 포함)
-      /페이지\s*(\d+)/,             // "페이지 69" (공백 포함)
-      /p\.\s*(\d+)/i,               // "p.69" (공백 포함)
-      /(\d+)\s*페이지/              // "69페이지"
+      /^(\d+)$/,                    // "15" (단독 숫자)
+      /^페이지\s*(\d+)$/i,          // "페이지 15"
+      /^(\d+)\s*\/\s*\d+$/i,        // "15/124" (분자만 추출)
+      /^(\d+)\s*of\s*\d+$/i,        // "15 of 124"
+      /^p\.\s*(\d+)$/i,             // "p.15"
+      /^P\.\s*(\d+)$/i              // "P.15"
     ];
     
     for (const pattern of pagePatterns) {
@@ -269,20 +179,6 @@ function extractActualPageNumber(text) {
           console.log(`실제 페이지 번호 발견: ${pageNum} (라인: "${line}")`);
           return pageNum;
         }
-      }
-    }
-  }
-  
-  // 추가 검색: 텍스트 중간에서도 페이지 번호 찾기
-  for (let i = Math.max(0, lines.length - 30); i < lines.length; i++) {
-    const line = lines[i];
-    // "69" 형태의 단독 숫자 찾기 (페이지 번호일 가능성)
-    const singleNumberMatch = line.match(/^(\d{1,3})$/);
-    if (singleNumberMatch) {
-      const pageNum = parseInt(singleNumberMatch[1], 10);
-      if (pageNum >= 1 && pageNum <= 999) {
-        console.log(`추가 페이지 번호 발견: ${pageNum} (라인: "${line}")`);
-        return pageNum;
       }
     }
   }
