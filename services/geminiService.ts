@@ -1393,7 +1393,7 @@ export class GeminiService {
       
       // chat_index.html과 정확히 동일한 방식
       const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         config: {
           systemInstruction: systemInstruction,
         },
@@ -1572,7 +1572,7 @@ export class GeminiService {
       
       // Gemini API 호출
       const model = ai.getGenerativeModel({ 
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         systemInstruction: systemInstruction
       });
 
@@ -1639,7 +1639,7 @@ export class GeminiService {
       
       // Gemini API 호출
       const model = ai.getGenerativeModel({ 
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         systemInstruction: systemInstruction
       });
 
