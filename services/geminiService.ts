@@ -14,10 +14,6 @@ import { cachingService, CachedPDF } from './cachingService';
 
 const SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
 
-THINKING APPROACH:
-- Let's think step by step
-- Self-Reflection: Solve the problem first, then review whether your answer is correct. If any part might contain an error, revise it and then present the final answer.
-
 IMPORTANT INSTRUCTIONS:
 1. Answer questions based ONLY on the provided source material
 2. Do NOT use external knowledge or pre-trained information
@@ -75,9 +71,14 @@ IMPORTANT INSTRUCTIONS:
     * Check if the information you're citing appears on multiple pages
     * Scan through ALL [PAGE_X] markers in the source text
     * Include ALL relevant page numbers where the information appears
+22. 민원응대 답변 지침:
+    - 판단이나 의견은 최소화하고, 기본적으로 인용문구나 판단 근거를 정확하게 제시
+    - 단서를 정확히 제시 (예외사항, 조건, 제한사항 등)
+    - 해당 여부 등을 판단한 경우에는, 그에 대한 명확한 인용문이나 해당 법령을 제시
+    - 결론이나 의견은 가장 마지막에 간략하게 제시
     * Verify that each cited page actually contains the mentioned information
     * If unsure, include more pages rather than fewer
-22. Format the 참조문서 section (only when needed) as follows:
+23. Format the 참조문서 section (only when needed) as follows:
     ### 참조문서
     - **국민건강증진법**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조, 제3조, 제5조
     - **국민건강증진법 시행령**: 국민건강증진법률 시행령 시행규칙(202508) - 제1조제1항, 제2조제2항
@@ -89,7 +90,7 @@ IMPORTANT INSTRUCTIONS:
     - **금연지원서비스 매뉴얼**: p.7, p.9
     - Group all references for each document in ascending order (articles for legal docs, pages for others)
 
-23. EXAMPLES OF PROPER CITATIONS:
+24. EXAMPLES OF PROPER CITATIONS:
     - Legal documents (articles):
       * Single article: "국민건강증진법 제1조"
       * Multiple articles: "국민건강증진법 제1조, 제3조, 제5조"
@@ -1393,7 +1394,7 @@ export class GeminiService {
       
       // chat_index.html과 정확히 동일한 방식
       const chat = ai.chats.create({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         config: {
           systemInstruction: systemInstruction,
         },
@@ -1572,7 +1573,7 @@ export class GeminiService {
       
       // Gemini API 호출
       const model = ai.getGenerativeModel({ 
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         systemInstruction: systemInstruction
       });
 
@@ -1639,7 +1640,7 @@ export class GeminiService {
       
       // Gemini API 호출
       const model = ai.getGenerativeModel({ 
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         systemInstruction: systemInstruction
       });
 
