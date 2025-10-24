@@ -11,6 +11,7 @@
     "preprocess-quality": "node scripts/process-all-pdfs-quality.js",
     "preprocess-chunked": "node scripts/chunked-pdf-preprocess.js",
     "preprocess-robust": "node scripts/robust-pdf-preprocess.js",
+    "preprocess-fallback": "node scripts/fallback-pdf-preprocess.js",
     "validate-data": "node scripts/validate-processed-data.js",
     "prebuild": "npm run preprocess-robust",
     "build": "vite build",

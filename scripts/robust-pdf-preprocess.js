@@ -11,6 +11,115 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
+// GitHub Actions 환경을 위한 폴리필 설정
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor(init) {
+      if (init) {
+        this.a = init.a || 1;
+        this.b = init.b || 0;
+        this.c = init.c || 0;
+        this.d = init.d || 1;
+        this.e = init.e || 0;
+        this.f = init.f || 0;
+      } else {
+        this.a = 1;
+        this.b = 0;
+        this.c = 0;
+        this.d = 1;
+        this.e = 0;
+        this.f = 0;
+      }
+    }
+    
+    scale(x, y) {
+      return new DOMMatrix({
+        a: this.a * x,
+        b: this.b * x,
+        c: this.c * y,
+        d: this.d * y,
+        e: this.e,
+        f: this.f
+      });
+    }
+    
+    translate(x, y) {
+      return new DOMMatrix({
+        a: this.a,
+        b: this.b,
+        c: this.c,
+        d: this.d,
+        e: this.e + x,
+        f: this.f + y
+      });
+    }
+    
+    multiply(other) {
+      return new DOMMatrix({
+        a: this.a * other.a + this.c * other.b,
+        b: this.b * other.a + this.d * other.b,
+        c: this.a * other.c + this.c * other.d,
+        d: this.b * other.c + this.d * other.d,
+        e: this.a * other.e + this.c * other.f + this.e,
+        f: this.b * other.e + this.d * other.f + this.f
+      });
+    }
+  };
+}
+
+// ImageData 폴리필
+if (typeof globalThis.ImageData === 'undefined') {
+  globalThis.ImageData = class ImageData {
+    constructor(data, width, height) {
+      this.data = data || new Uint8ClampedArray(width * height * 4);
+      this.width = width;
+      this.height = height;
+    }
+  };
+}
+
+// Path2D 폴리필
+if (typeof globalThis.Path2D === 'undefined') {
+  globalThis.Path2D = class Path2D {
+    constructor() {
+      this.commands = [];
+    }
+    
+    moveTo(x, y) {
+      this.commands.push(['moveTo', x, y]);
+    }
+    
+    lineTo(x, y) {
+      this.commands.push(['lineTo', x, y]);
+    }
+    
+    arc(x, y, radius, startAngle, endAngle) {
+      this.commands.push(['arc', x, y, radius, startAngle, endAngle]);
+    }
+  };
+}
+
+// Canvas 폴리필 (기본적인 것만)
+if (typeof globalThis.HTMLCanvasElement === 'undefined') {
+  globalThis.HTMLCanvasElement = class HTMLCanvasElement {
+    constructor() {
+      this.width = 0;
+      this.height = 0;
+    }
+    
+    getContext(type) {
+      return {
+        getImageData: () => new globalThis.ImageData(0, 0),
+        putImageData: () => {},
+        drawImage: () => {},
+        fillRect: () => {},
+        strokeRect: () => {},
+        clearRect: () => {}
+      };
+    }
+  };
+}
+
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 

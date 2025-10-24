@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
-// DOMMatrix polyfill for Node.js environment
+// GitHub Actions 환경을 위한 완전한 폴리필 설정
 if (typeof globalThis.DOMMatrix === 'undefined') {
   globalThis.DOMMatrix = class DOMMatrix {
     constructor(init) {
@@ -49,6 +49,49 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
         e: this.e + x,
         f: this.f + y
       });
+    }
+    
+    multiply(other) {
+      return new DOMMatrix({
+        a: this.a * other.a + this.c * other.b,
+        b: this.b * other.a + this.d * other.b,
+        c: this.a * other.c + this.c * other.d,
+        d: this.b * other.c + this.d * other.d,
+        e: this.a * other.e + this.c * other.f + this.e,
+        f: this.b * other.e + this.d * other.f + this.f
+      });
+    }
+  };
+}
+
+// ImageData 폴리필
+if (typeof globalThis.ImageData === 'undefined') {
+  globalThis.ImageData = class ImageData {
+    constructor(data, width, height) {
+      this.data = data || new Uint8ClampedArray(width * height * 4);
+      this.width = width;
+      this.height = height;
+    }
+  };
+}
+
+// Path2D 폴리필
+if (typeof globalThis.Path2D === 'undefined') {
+  globalThis.Path2D = class Path2D {
+    constructor() {
+      this.commands = [];
+    }
+    
+    moveTo(x, y) {
+      this.commands.push(['moveTo', x, y]);
+    }
+    
+    lineTo(x, y) {
+      this.commands.push(['lineTo', x, y]);
+    }
+    
+    arc(x, y, radius, startAngle, endAngle) {
+      this.commands.push(['arc', x, y, radius, startAngle, endAngle]);
     }
   };
 }

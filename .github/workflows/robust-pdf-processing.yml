@@ -78,14 +78,34 @@ jobs:
         echo "  OVERLAP_SIZE: ${{ github.event.inputs.overlapSize || 200 }}"
         echo "  FORCE_REPROCESS: ${{ github.event.inputs.forceReprocess || false }}"
         
+        # Node.js 환경 설정 (PDF 파싱 최적화)
+        export NODE_OPTIONS="--max-old-space-size=4096 --no-experimental-fetch"
+        export PDF_PARSER_OPTIONS="--no-sandbox"
+        export NODE_ENV="production"
+        
         # 환경변수 설정
         export CHUNK_SIZE=${{ github.event.inputs.chunkSize || 2000 }}
         export OVERLAP_SIZE=${{ github.event.inputs.overlapSize || 200 }}
         export FORCE_REPROCESS=${{ github.event.inputs.forceReprocess || false }}
         export GITHUB_ACTIONS=true
         
+        # 폴리필 환경 설정
+        export NODE_POLYFILLS="dom,canvas"
+        
+        echo "🔧 Node.js 환경 설정:"
+        echo "  NODE_OPTIONS: $NODE_OPTIONS"
+        echo "  NODE_ENV: $NODE_ENV"
+        echo "  NODE_POLYFILLS: $NODE_POLYFILLS"
+        
         # 강화된 PDF 처리 스크립트 실행
-        node scripts/robust-pdf-preprocess.js
+        echo "🔄 메인 PDF 처리 시도..."
+        if node scripts/robust-pdf-preprocess.js; then
+          echo "✅ 메인 PDF 처리 성공!"
+        else
+          echo "⚠️ 메인 PDF 처리 실패, 대체 방법 시도..."
+          node scripts/fallback-pdf-preprocess.js
+          echo "✅ 대체 PDF 처리 완료!"
+        fi
         
         echo "✅ PDF 처리 완료!"
       env:
