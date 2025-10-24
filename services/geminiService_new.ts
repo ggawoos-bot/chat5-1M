@@ -29,11 +29,6 @@ CRITICAL INSTRUCTIONS FOR ACCURATE RAG SYSTEM:
 9. **PRECISION**: Prioritize accuracy over completeness - better to be precise than comprehensive
 10. **KOREAN LEGAL TERMINOLOGY**: Use exact terminology from the source documents
 
-THINKING PROCESS:
-- **Step-by-Step Analysis**: Let's think step by step to ensure accuracy
-- **Self-Reflection**: Solve the problem first, then review whether your answer is correct. If any part might contain an error, revise it and then present the final answer
-- **Quality Check**: Before finalizing, verify that your answer is grounded in the source material and properly cited
-
 Here is the source material:
 ----START OF SOURCE---
 {sourceText}

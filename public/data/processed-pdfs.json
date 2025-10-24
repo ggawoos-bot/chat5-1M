@@ -1,5 +1,5 @@
 {
-  "processedAt": "2025-10-24T03:48:07.610Z",
+  "processedAt": "2025-10-24T04:22:13.418Z",
   "environment": "local",
   "totalFiles": 7,
   "successfulFiles": 7,
@@ -1046,7 +1046,7 @@
             "chunkIndex": 0,
             "startPosition": 0,
             "endPosition": 2000,
-            "pageNumber": 1,
+            "pageNumber": 67,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -1058,7 +1058,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 1
+            "page": 67
           }
         },
         {
@@ -1094,7 +1094,7 @@
             "chunkIndex": 2,
             "startPosition": 4000,
             "endPosition": 6000,
-            "pageNumber": 3,
+            "pageNumber": 61,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -1106,7 +1106,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 3
+            "page": 61
           }
         },
         {
@@ -1118,7 +1118,7 @@
             "chunkIndex": 3,
             "startPosition": 6000,
             "endPosition": 8000,
-            "pageNumber": 4,
+            "pageNumber": 66,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -1130,7 +1130,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 4
+            "page": 66
           }
         },
         {
@@ -1190,7 +1190,7 @@
             "chunkIndex": 6,
             "startPosition": 12000,
             "endPosition": 14000,
-            "pageNumber": 7,
+            "pageNumber": 64,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -1202,7 +1202,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 7
+            "page": 64
           }
         },
         {
@@ -1574,7 +1574,7 @@
             "chunkIndex": 22,
             "startPosition": 44000,
             "endPosition": 46000,
-            "pageNumber": 23,
+            "pageNumber": 60,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -1586,7 +1586,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 23
+            "page": 60
           }
         },
         {
@@ -2030,7 +2030,7 @@
             "chunkIndex": 41,
             "startPosition": 82000,
             "endPosition": 84000,
-            "pageNumber": 42,
+            "pageNumber": 75,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -2042,7 +2042,7 @@
           "location": {
             "document": "금연구역 지정 관리 업무지침_2025개정판.pdf",
             "section": "일반",
-            "page": 42
+            "page": 75
           }
         },
         {
@@ -5667,7 +5667,7 @@
             "chunkIndex": 31,
             "startPosition": 62000,
             "endPosition": 64000,
-            "pageNumber": 32,
+            "pageNumber": 65,
             "sectionTitle": "일반",
             "documentType": "guideline"
           },
@@ -5679,7 +5679,7 @@
           "location": {
             "document": "2025년 지역사회 통합건강증진사업 안내서(금연).pdf",
             "section": "일반",
-            "page": 32
+            "page": 65
           }
         },
         {
