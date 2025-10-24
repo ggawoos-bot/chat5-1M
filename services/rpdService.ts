@@ -235,6 +235,30 @@ class RpdService {
     localStorage.removeItem(this.STORAGE_KEY);
     this.resetRpdData();
   }
+
+  // NotebookLM 채팅 세션 생성 (호환성을 위한 함수)
+  createNotebookChatSession(config?: any): any {
+    console.log('NotebookLM 채팅 세션 생성 요청:', config);
+    // 실제 NotebookLM API 호출은 여기서 구현
+    // 현재는 호환성을 위한 더미 함수
+    return {
+      sendMessage: async (message: string) => {
+        console.log('NotebookLM 메시지 전송:', message);
+        return { text: 'NotebookLM 기능은 현재 구현 중입니다.' };
+      }
+    };
+  }
+
+  // 압축 통계 가져오기 (호환성을 위한 함수)
+  getCompressionStats(): any {
+    console.log('압축 통계 요청');
+    return {
+      totalChunks: 0,
+      compressedSize: 0,
+      originalSize: 0,
+      compressionRatio: 0
+    };
+  }
 }
 
 export const rpdService = new RpdService();
