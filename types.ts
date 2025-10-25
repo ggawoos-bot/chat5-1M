@@ -29,20 +29,19 @@ export interface Chunk {
   metadata: {
     source: string;
     title: string;
-    pageNumber?: number;
-    chunkIndex: number;
+    page: number;
+    section: string;
+    position: number;
     startPosition: number;
     endPosition: number;
-    articles?: string[];
-    sectionTitle?: string;
+    originalSize: number;
     documentType?: 'legal' | 'guideline';
   };
   keywords: string[];
   location: {
     document: string;
-    section?: string;
-    subsection?: string;
-    page?: number;
+    section: string;
+    page: number;
   };
   relevanceScore?: number;
 }

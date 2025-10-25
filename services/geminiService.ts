@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { SourceInfo, Chunk, QuestionAnalysis } from '../types';
 import { pdfCompressionService, CompressionResult } from './pdfCompressionService';
 import { questionAnalyzer, contextSelector, ContextSelector } from './questionBasedContextService';
@@ -12,7 +12,8 @@ import { FirestoreService, PDFChunk } from './firestoreService';
 
 // API 키 로테이션을 위한 인덱스 (전역 변수 제거)
 
-const SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
+export class GeminiService {
+  private static readonly SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
 
 THINKING APPROACH:
 - Let's think step by step
@@ -22,7 +23,7 @@ IMPORTANT INSTRUCTIONS:
 1. Answer questions based ONLY on the provided source material
 2. Do NOT use external knowledge or pre-trained information
 3. If information is not found in the source, clearly state "제공된 자료에서 해당 정보를 찾을 수 없습니다"
-4. Always cite specific documents and sections when possible
+4. **CRITICAL: Always cite the COMPLETE relevant articles/sections in full before providing any analysis or opinion**
 5. For Korean legal/administrative terms, use the exact terminology from the source
 6. Provide comprehensive answers by combining information from multiple relevant sections
 7. If multiple documents contain related information, synthesize them coherently
@@ -36,6 +37,13 @@ IMPORTANT INSTRUCTIONS:
     |----------|----------|----------|
     | Data 1   | Data 2   | Data 3   |
 14. Always include the separator row (---) between header and data rows
+
+📋 **ANSWER FORMAT REQUIREMENTS:**
+- **Step 1**: Quote the COMPLETE relevant article/section in full (with proper formatting)
+- **Step 2**: Provide analysis, interpretation, or additional context if needed
+- **Step 3**: Restrain from personal opinions or judgments - focus on factual information
+- **Step 4**: If multiple articles are relevant, quote ALL of them before analysis
+- **Step 5**: Use blockquotes (>) for legal text citations to distinguish from analysis
 
 🆕 SPECIAL FOCUS AREAS:
 - APARTMENT COMPLEXES (공동주택): Pay special attention to questions about apartment complexes, including:
@@ -143,7 +151,7 @@ declare global {
 
 export class GeminiService {
   private sources: SourceInfo[] = [];
-  private ai: GoogleGenAI | null = null;
+  private ai: GoogleGenerativeAI | null = null;
   private currentChatSession: any = null;
   private cachedSourceText: string | null = null;
   private firestoreService: FirestoreService;
@@ -181,6 +189,7 @@ export class GeminiService {
           sourceMap.set(sourceKey, {
             id: sourceKey,
             title: filename.replace('.pdf', ''),
+            content: chunk.content.substring(0, 200) + '...',
             type: 'pdf',
             section: mainArticle,
             page: null,
@@ -197,6 +206,7 @@ export class GeminiService {
           sourceMap.set(sourceKey, {
             id: sourceKey,
             title: filename.replace('.pdf', ''),
+            content: chunk.content.substring(0, 200) + '...',
             type: 'pdf',
             section: section,
             page: pageNumber,
@@ -1185,7 +1195,7 @@ export class GeminiService {
 
     // 답변 품질 100% 보장
     try {
-      const answer = await this.generateAnswer(question);
+      const answer = await this.generateStreamingResponse(question);
       return {
         answer,
         quality: 'guaranteed',
@@ -1402,13 +1412,13 @@ export class GeminiService {
       console.log(`✅ 컨텍스트 길이 조정: ${actualSourceText.length}자`);
     }
     
-    const systemInstruction = SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', actualSourceText);
+      const systemInstruction = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', actualSourceText);
 
     console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
 
     try {
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      const ai = new GoogleGenerativeAI(selectedApiKey);
       
       // chat_index.html과 정확히 동일한 방식
       const chat = ai.chats.create({
@@ -1442,8 +1452,9 @@ export class GeminiService {
       console.error('채팅 세션 생성 실패:', error);
       
       // API 키 교체 시도
-      const failedKeyIndex = (this.currentKeyIndex - 1 + 3) % 3;
-      if (this.handleApiKeyFailure(API_KEYS[failedKeyIndex], error)) {
+      const apiKeys = this.getApiKeys();
+      const failedKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
+      if (this.handleApiKeyFailure(apiKeys[failedKeyIndex], error)) {
         // 키 교체 후 재시도
         return this.createNotebookChatSession(sourceText);
       }
@@ -1591,7 +1602,7 @@ export class GeminiService {
       console.log(`질문 처리 (출처 포함) - API 키: ${selectedApiKey.substring(0, 10)}...`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      const ai = new GoogleGenerativeAI(selectedApiKey);
       
       // PDF 소스 텍스트 로드
       if (!this.cachedSourceText) {
@@ -1675,7 +1686,7 @@ export class GeminiService {
       console.log(`질문 처리 - API 키: ${selectedApiKey.substring(0, 10)}...`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      const ai = new GoogleGenerativeAI(selectedApiKey);
       
       // PDF 소스 텍스트 로드
       if (!this.cachedSourceText) {

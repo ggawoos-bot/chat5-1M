@@ -1,36 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { FirestoreService, PDFChunk } from './firestoreService';
-
-// 타입 정의
-export interface QuestionAnalysis {
-  intent: string;
-  keywords: string[];
-  category: 'definition' | 'procedure' | 'regulation' | 'comparison' | 'analysis' | 'general';
-  complexity: 'simple' | 'medium' | 'complex';
-  entities: string[];
-  context: string;
-}
-
-export interface Chunk {
-  id: string;
-  content: string;
-  metadata: {
-    source: string;
-    title: string;
-    page: number;
-    section: string;
-    position: number;
-    startPosition: number;
-    endPosition: number;
-    originalSize: number;
-  };
-  keywords: string[];
-  location: {
-    document: string;
-    section: string;
-    page: number;
-  };
-}
+import { Chunk, QuestionAnalysis } from '../types';
 
 /**
  * 질문 분석기 (AI 기반)
@@ -160,6 +130,7 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 {
   "intent": "질문의 의도 (예: 금연구역 지정 절차 문의, 규정 내용 확인 등)",
   "keywords": ["핵심 키워드 배열"],
+  "expandedKeywords": ["확장된 키워드 배열 (동의어, 유사어, 전문용어 포함)"],
   "category": "질문 카테고리 (definition/procedure/regulation/comparison/analysis/general)",
   "complexity": "복잡도 (simple/medium/complex)",
   "entities": ["질문에서 언급된 구체적 개체들"],
@@ -170,7 +141,18 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 - category: definition(정의), procedure(절차), regulation(규정), comparison(비교), analysis(분석), general(일반)
 - complexity: simple(단순), medium(중간), complex(복잡)
 - keywords: 질문의 핵심을 나타내는 중요한 단어들
+- expandedKeywords: 관련 동의어, 유사어, 전문용어를 포함한 확장된 키워드 목록
 - entities: 구체적인 명사, 기관명, 법령명 등
+
+특별히 다음 용어들의 관련 키워드를 확장해주세요:
+- 금연: 흡연금지, 담배금지, 니코틴금지, 흡연제한, 금연구역, 금연구역
+- 공동주택: 아파트, 연립주택, 다세대주택, 주택단지, 아파트단지
+- 어린이집: 보육시설, 유치원, 어린이보호시설, 보육원
+- 학교: 교육시설, 학원, 교실, 강의실
+- 병원: 의료시설, 클리닉, 의원, 보건소
+- 법령: 법규, 규정, 조항, 법률, 시행령, 시행규칙
+- 위반: 위배, 위법, 불법, 금지행위, 규정위반
+- 벌금: 과태료, 처벌, 제재, 벌칙, 과징금
 
 **중요**: Markdown 코드 블록을 사용하지 말고 순수한 JSON 객체만 반환해주세요.
 `;
@@ -210,9 +192,18 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
       
       console.log(`✅ JSON 파싱 성공:`, analysis);
       
+      // 확장된 키워드와 기본 키워드 병합
+      const allKeywords = [
+        ...(analysis.keywords || []),
+        ...(analysis.expandedKeywords || [])
+      ];
+      
+      // 중복 제거
+      const uniqueKeywords = [...new Set(allKeywords)];
+
       return {
         intent: analysis.intent || '일반 문의',
-        keywords: analysis.keywords || [],
+        keywords: uniqueKeywords,
         category: (analysis.category as QuestionAnalysis['category']) || 'general',
         complexity: (analysis.complexity as QuestionAnalysis['complexity']) || 'simple',
         entities: analysis.entities || [],
@@ -234,10 +225,12 @@ export class ContextSelector {
   private static chunks: Chunk[] = [];
   private static firestoreService: FirestoreService = FirestoreService.getInstance();
   
-  // 컨텍스트 길이 제한 상수
-  private static readonly MAX_CONTEXT_LENGTH = 10000; // 10,000자 (GitHub Pages 수준)
-  private static readonly MAX_CHUNK_LENGTH = 3000; // 각 청크 최대 3,000자
-  private static readonly DEFAULT_MAX_CHUNKS = 3; // 기본 최대 청크 수
+  // 동적 컨텍스트 길이 제한 상수
+  private static readonly MIN_CONTEXT_LENGTH = 15000; // 최소 15,000자
+  private static readonly MAX_CONTEXT_LENGTH = 50000; // 최대 50,000자
+  private static readonly MAX_CHUNK_LENGTH = 5000; // 각 청크 최대 5,000자
+  private static readonly DEFAULT_MAX_CHUNKS = 5; // 기본 최대 청크 수
+  private static readonly MAX_CHUNKS_COMPLEX = 15; // 복잡한 질문 최대 청크 수
 
   /**
    * 청크 설정
@@ -252,6 +245,51 @@ export class ContextSelector {
    */
   static getChunks(): Chunk[] {
     return this.chunks;
+  }
+
+  /**
+   * 질문 복잡도에 따른 동적 컨텍스트 길이 계산
+   */
+  private static calculateDynamicContextLength(questionAnalysis: QuestionAnalysis): {
+    maxContextLength: number;
+    maxChunks: number;
+  } {
+    const { complexity, category, keywords } = questionAnalysis;
+    
+    let maxContextLength = this.MIN_CONTEXT_LENGTH;
+    let maxChunks = this.DEFAULT_MAX_CHUNKS;
+    
+    // 복잡도에 따른 조정
+    switch (complexity) {
+      case 'simple':
+        maxContextLength = this.MIN_CONTEXT_LENGTH; // 15,000자
+        maxChunks = 3;
+        break;
+      case 'medium':
+        maxContextLength = this.MIN_CONTEXT_LENGTH + 10000; // 25,000자
+        maxChunks = 8;
+        break;
+      case 'complex':
+        maxContextLength = this.MAX_CONTEXT_LENGTH; // 50,000자
+        maxChunks = this.MAX_CHUNKS_COMPLEX; // 15개
+        break;
+    }
+    
+    // 카테고리별 추가 조정
+    if (category === 'analysis' || category === 'comparison') {
+      maxContextLength = Math.min(maxContextLength + 10000, this.MAX_CONTEXT_LENGTH);
+      maxChunks = Math.min(maxChunks + 3, this.MAX_CHUNKS_COMPLEX);
+    }
+    
+    // 키워드 수에 따른 조정
+    if (keywords.length > 5) {
+      maxContextLength = Math.min(maxContextLength + 5000, this.MAX_CONTEXT_LENGTH);
+      maxChunks = Math.min(maxChunks + 2, this.MAX_CHUNKS_COMPLEX);
+    }
+    
+    console.log(`🎯 동적 컨텍스트 설정: ${maxContextLength}자, ${maxChunks}개 청크 (복잡도: ${complexity}, 카테고리: ${category})`);
+    
+    return { maxContextLength, maxChunks };
   }
 
   /**
@@ -306,18 +344,37 @@ export class ContextSelector {
   static async selectRelevantContexts(
     questionAnalysis: QuestionAnalysis,
     allChunks: Chunk[], // This will be the fallback if Firestore fails
-    maxChunks: number = ContextSelector.DEFAULT_MAX_CHUNKS
+    maxChunks?: number // 동적으로 계산됨
   ): Promise<Chunk[]> {
     console.log(`🔍 컨텍스트 선택 시작: "${questionAnalysis.intent}"`);
+    console.log(`📊 질문 분석 정보:`, {
+      keywords: questionAnalysis.keywords,
+      category: questionAnalysis.category,
+      complexity: questionAnalysis.complexity,
+      entities: questionAnalysis.entities
+    });
+    
+    // 동적 컨텍스트 길이 계산
+    const { maxContextLength, maxChunks: dynamicMaxChunks } = this.calculateDynamicContextLength(questionAnalysis);
+    const actualMaxChunks = maxChunks || dynamicMaxChunks;
+    
+    console.log(`🎯 동적 설정 적용: 최대 ${maxContextLength}자, ${actualMaxChunks}개 청크`);
+    console.log(`📈 사용 가능한 총 청크 수: ${allChunks.length}개`);
     
     // 1. Firestore에서 키워드 기반 검색
     let firestoreChunks: Chunk[] = [];
     try {
+      console.log(`🔍 1단계: Firestore 키워드 검색 시작`);
+      console.log(`🔍 검색 키워드: [${questionAnalysis.keywords.join(', ')}]`);
+      console.log(`🔍 최대 청크 수: ${actualMaxChunks}개`);
+      
       const firestoreResults = await this.firestoreService.searchChunksByKeywords(
         questionAnalysis.keywords,
         undefined,
-        maxChunks
+        actualMaxChunks
       );
+      
+      console.log(`📊 Firestore 원본 결과: ${firestoreResults.length}개 청크`);
       
       // Firestore 결과를 Chunk 형식으로 변환
       firestoreChunks = firestoreResults.map((chunk: PDFChunk) => ({
@@ -341,19 +398,31 @@ export class ContextSelector {
         }
       }));
       
-      console.log(`✅ Firestore 검색 완료: ${firestoreChunks.length}개 청크`);
+      console.log(`✅ 1단계 완료: Firestore 키워드 검색 ${firestoreChunks.length}개 청크`);
+      console.log(`📋 검색된 청크 정보:`, firestoreChunks.map(c => ({
+        id: c.id,
+        contentLength: c.content.length,
+        keywords: c.keywords.slice(0, 3),
+        section: c.metadata.section
+      })));
     } catch (error) {
-      console.warn('⚠️ Firestore 검색 실패:', error);
+      console.warn('⚠️ 1단계 실패: Firestore 키워드 검색 실패:', error);
     }
 
     // 2. Firestore에서 텍스트 기반 검색 (키워드 검색 결과가 부족한 경우)
-    if (firestoreChunks.length < maxChunks) {
+    if (firestoreChunks.length < actualMaxChunks) {
       try {
+        console.log(`🔍 2단계: Firestore 텍스트 검색 시작`);
+        console.log(`🔍 검색 텍스트: "${questionAnalysis.context}"`);
+        console.log(`🔍 추가 필요 청크: ${actualMaxChunks - firestoreChunks.length}개`);
+        
         const textResults = await this.firestoreService.searchChunksByText(
           questionAnalysis.context,
           undefined,
-          maxChunks - firestoreChunks.length
+          actualMaxChunks - firestoreChunks.length
         );
+        
+        console.log(`📊 Firestore 텍스트 검색 원본 결과: ${textResults.length}개 청크`);
         
         // 중복 제거하면서 추가
         const additionalChunks = textResults
@@ -362,13 +431,13 @@ export class ContextSelector {
             id: chunk.id || `firestore-text-${Math.random()}`,
             content: chunk.content,
             metadata: {
-           source: 'Firestore',
-           title: 'Unknown',
+              source: 'Firestore',
+              title: 'Unknown',
               page: chunk.metadata?.page || 1,
               section: chunk.metadata?.section || 'Unknown',
               position: chunk.metadata?.position || 0,
-           startPosition: chunk.metadata?.startPos || 0,
-           endPosition: chunk.metadata?.endPos || 0,
+              startPosition: chunk.metadata?.startPos || 0,
+              endPosition: chunk.metadata?.endPos || 0,
               originalSize: chunk.metadata?.originalSize || 0
             },
             keywords: chunk.keywords || [],
@@ -380,17 +449,41 @@ export class ContextSelector {
           }));
         
         firestoreChunks = [...firestoreChunks, ...additionalChunks];
-        console.log(`✅ Firestore 텍스트 검색 완료: ${additionalChunks.length}개 추가 청크`);
+        console.log(`✅ 2단계 완료: Firestore 텍스트 검색 ${additionalChunks.length}개 추가 청크`);
+        console.log(`📋 추가된 청크 정보:`, additionalChunks.map(c => ({
+          id: c.id,
+          contentLength: c.content.length,
+          keywords: c.keywords.slice(0, 3),
+          section: c.metadata.section
+        })));
       } catch (error) {
-        console.warn('⚠️ Firestore 텍스트 검색 실패:', error);
+        console.warn('⚠️ 2단계 실패: Firestore 텍스트 검색 실패:', error);
       }
     }
     
     // Firestore 결과가 있으면 사용, 없으면 로컬 청크 사용
     let chunksToUse = firestoreChunks.length > 0 ? firestoreChunks : allChunks;
     
-    // 컨텍스트 길이 제한 적용
-    chunksToUse = this.applyContextLengthLimit(chunksToUse, maxChunks);
+    console.log(`🔍 3단계: 최종 청크 선택`);
+    console.log(`📊 사용할 청크 소스: ${firestoreChunks.length > 0 ? 'Firestore' : '로컬 캐시'}`);
+    console.log(`📊 선택된 청크 수: ${chunksToUse.length}개`);
+    
+    // 동적 컨텍스트 길이 제한 적용
+    console.log(`🔍 4단계: 동적 컨텍스트 길이 제한 적용`);
+    console.log(`📏 최대 컨텍스트 길이: ${maxContextLength}자`);
+    console.log(`📏 최대 청크 수: ${actualMaxChunks}개`);
+    
+    chunksToUse = this.applyDynamicContextLengthLimit(chunksToUse, maxContextLength, actualMaxChunks);
+    
+    console.log(`✅ 4단계 완료: 최종 선택된 청크 ${chunksToUse.length}개`);
+    console.log(`📋 최종 청크 상세 정보:`, chunksToUse.map((c, index) => ({
+      index: index + 1,
+      id: c.id,
+      contentLength: c.content.length,
+      keywords: c.keywords.slice(0, 3),
+      section: c.metadata.section,
+      source: c.metadata.source
+    })));
     
     if (chunksToUse.length === 0) {
       console.warn('⚠️ 사용 가능한 청크가 없습니다. 실시간 PDF 파싱을 강제 실행합니다.');
@@ -451,47 +544,10 @@ export class ContextSelector {
       }
     }
 
-    // 키워드 기반 점수 계산
+    // 개선된 관련성 점수 계산
     const scoredChunks = chunksToUse.map(chunk => {
-      let score = 0;
-
-      // 1. 키워드 매칭 점수
-      const keywordMatches = questionAnalysis.keywords.filter(keyword =>
-        chunk.keywords.some(chunkKeyword =>
-          chunkKeyword.toLowerCase().includes(keyword.toLowerCase()) ||
-          keyword.toLowerCase().includes(chunkKeyword.toLowerCase())
-        )
-      ).length;
-
-      score += keywordMatches * 10;
-
-      // 2. 내용 매칭 점수
-      const contentMatches = questionAnalysis.keywords.filter(keyword =>
-        chunk.content.toLowerCase().includes(keyword.toLowerCase())
-      ).length;
-
-      score += contentMatches * 5;
-
-      // 3. 카테고리 매칭 점수
-      if (questionAnalysis.category === 'definition' && chunk.metadata.section.includes('정의')) {
-        score += 15;
-      } else if (questionAnalysis.category === 'procedure' && chunk.metadata.section.includes('절차')) {
-        score += 15;
-      } else if (questionAnalysis.category === 'regulation' && chunk.metadata.section.includes('규정')) {
-        score += 15;
-      }
-
-      // 4. 복잡도 매칭 점수
-      if (questionAnalysis.complexity === 'complex' && chunk.content.length > 500) {
-        score += 10;
-      } else if (questionAnalysis.complexity === 'simple' && chunk.content.length < 200) {
-        score += 5;
-      }
-
-      return {
-        chunk,
-        score
-      };
+      const score = this.calculateEnhancedRelevanceScore(questionAnalysis, chunk);
+      return { chunk, score };
     });
 
     // 점수순으로 정렬하고 상위 청크 선택
@@ -506,7 +562,7 @@ export class ContextSelector {
   }
 
   /**
-   * 컨텍스트 길이 제한 적용
+   * 컨텍스트 길이 제한 적용 (기존)
    */
   private static applyContextLengthLimit(chunks: Chunk[], maxChunks: number): Chunk[] {
     if (chunks.length === 0) return chunks;
@@ -544,6 +600,235 @@ export class ContextSelector {
     
     console.log(`✅ 컨텍스트 길이 제한 적용: ${limitedChunks.length}개 청크, ${totalLength}자`);
     return limitedChunks;
+  }
+
+  /**
+   * 동적 컨텍스트 길이 제한 적용 (새로운)
+   */
+  private static applyDynamicContextLengthLimit(
+    chunks: Chunk[], 
+    maxContextLength: number, 
+    maxChunks: number
+  ): Chunk[] {
+    if (chunks.length === 0) return chunks;
+    
+    // 1. 각 청크의 길이를 MAX_CHUNK_LENGTH로 제한
+    const trimmedChunks = chunks.map(chunk => ({
+      ...chunk,
+      content: chunk.content.length > this.MAX_CHUNK_LENGTH 
+        ? chunk.content.substring(0, this.MAX_CHUNK_LENGTH) + '...'
+        : chunk.content
+    }));
+    
+    // 2. 관련성 점수 기반 정렬 (이미 정렬되어 있다고 가정)
+    const sortedChunks = [...trimmedChunks];
+    
+    // 3. 동적 길이 제한 적용
+    let totalLength = 0;
+    const limitedChunks: Chunk[] = [];
+    
+    for (const chunk of sortedChunks) {
+      const chunkLength = chunk.content.length;
+      
+      // 동적 컨텍스트 길이 제한 확인
+      if (totalLength + chunkLength > maxContextLength) {
+        console.log(`⚠️ 동적 컨텍스트 길이 제한 도달: ${totalLength}자 (제한: ${maxContextLength}자)`);
+        break;
+      }
+      
+      // 청크 수 제한 확인
+      if (limitedChunks.length >= maxChunks) {
+        console.log(`⚠️ 최대 청크 수 제한 도달: ${limitedChunks.length}개 (제한: ${maxChunks}개)`);
+        break;
+      }
+      
+      limitedChunks.push(chunk);
+      totalLength += chunkLength;
+    }
+    
+    console.log(`✅ 동적 컨텍스트 길이 제한 적용: ${limitedChunks.length}개 청크, ${totalLength}자 (최대: ${maxContextLength}자)`);
+    return limitedChunks;
+  }
+
+  /**
+   * 개선된 관련성 점수 계산
+   */
+  private static calculateEnhancedRelevanceScore(questionAnalysis: QuestionAnalysis, chunk: Chunk): number {
+    let score = 0;
+    const { keywords, category, complexity, intent } = questionAnalysis;
+
+    // 1. 키워드 매칭 점수 (가중치 적용)
+    const keywordMatches = keywords.filter(keyword =>
+      chunk.keywords.some(chunkKeyword =>
+        chunkKeyword.toLowerCase().includes(keyword.toLowerCase()) ||
+        keyword.toLowerCase().includes(chunkKeyword.toLowerCase())
+      )
+    ).length;
+    score += keywordMatches * 15; // 가중치 증가
+
+    // 2. 내용 매칭 점수 (정확한 매치 우선)
+    const exactMatches = keywords.filter(keyword =>
+      chunk.content.toLowerCase().includes(keyword.toLowerCase())
+    ).length;
+    score += exactMatches * 10;
+
+    // 3. 동의어 매칭 점수
+    const synonyms = this.getExpandedSynonyms(keywords);
+    const synonymMatches = synonyms.filter(synonym =>
+      chunk.content.toLowerCase().includes(synonym.toLowerCase())
+    ).length;
+    score += synonymMatches * 8;
+
+    // 4. 의미적 유사도 점수
+    const semanticScore = this.calculateSemanticSimilarity(questionAnalysis, chunk);
+    score += semanticScore * 20;
+
+    // 5. 카테고리 매칭 점수 (개선)
+    const categoryScore = this.calculateCategoryScore(category, chunk);
+    score += categoryScore;
+
+    // 6. 위치 기반 점수 (문서 상단 우선)
+    const positionScore = this.calculatePositionScore(chunk);
+    score += positionScore;
+
+    // 7. 문서 타입 점수
+    const documentTypeScore = this.calculateDocumentTypeScore(chunk);
+    score += documentTypeScore;
+
+    // 8. 복잡도 매칭 점수
+    const complexityScore = this.calculateComplexityScore(complexity, chunk);
+    score += complexityScore;
+
+    return Math.round(score * 100) / 100; // 소수점 2자리까지
+  }
+
+  /**
+   * 카테고리 매칭 점수 계산
+   */
+  private static calculateCategoryScore(category: string, chunk: Chunk): number {
+    const categoryKeywords = {
+      'definition': ['정의', '의미', '개념', '내용', '규정', '조항'],
+      'procedure': ['절차', '방법', '과정', '단계', '순서', '절차'],
+      'regulation': ['규정', '법령', '조항', '법률', '시행령', '시행규칙'],
+      'comparison': ['비교', '차이', '구분', '대조', '상이', '다른'],
+      'analysis': ['분석', '검토', '고려', '판단', '평가', '검토'],
+      'general': ['일반', '기본', '공통', '표준', '기준', '원칙']
+    };
+
+    const keywords = categoryKeywords[category] || [];
+    const matches = keywords.filter(keyword =>
+      chunk.content.toLowerCase().includes(keyword.toLowerCase()) ||
+      chunk.metadata.section.toLowerCase().includes(keyword.toLowerCase())
+    ).length;
+
+    return matches * 12;
+  }
+
+  /**
+   * 위치 기반 점수 계산 (문서 상단 우선)
+   */
+  private static calculatePositionScore(chunk: Chunk): number {
+    const position = chunk.metadata.position || 0;
+    const totalSize = chunk.metadata.originalSize || 1;
+    const relativePosition = position / totalSize;
+
+    // 상단 20%는 높은 점수
+    if (relativePosition < 0.2) return 15;
+    // 상단 50%는 중간 점수
+    if (relativePosition < 0.5) return 10;
+    // 하단 50%는 낮은 점수
+    return 5;
+  }
+
+  /**
+   * 문서 타입 점수 계산
+   */
+  private static calculateDocumentTypeScore(chunk: Chunk): number {
+    const title = chunk.metadata.title.toLowerCase();
+    
+    // 법령 문서 우선
+    if (title.includes('법률') || title.includes('시행령') || title.includes('시행규칙')) {
+      return 20;
+    }
+    // 가이드라인, 지침 우선
+    if (title.includes('가이드라인') || title.includes('지침') || title.includes('매뉴얼')) {
+      return 15;
+    }
+    // 안내서 우선
+    if (title.includes('안내') || title.includes('안내서')) {
+      return 10;
+    }
+    
+    return 5;
+  }
+
+  /**
+   * 복잡도 매칭 점수 계산
+   */
+  private static calculateComplexityScore(complexity: string, chunk: Chunk): number {
+    const contentLength = chunk.content.length;
+    
+    switch (complexity) {
+      case 'complex':
+        // 복잡한 질문은 긴 내용 선호
+        if (contentLength > 1000) return 15;
+        if (contentLength > 500) return 10;
+        return 5;
+      case 'medium':
+        // 중간 질문은 중간 길이 선호
+        if (contentLength > 500 && contentLength < 1000) return 12;
+        if (contentLength > 200 && contentLength < 500) return 8;
+        return 5;
+      case 'simple':
+        // 간단한 질문은 짧은 내용 선호
+        if (contentLength < 200) return 12;
+        if (contentLength < 500) return 8;
+        return 5;
+      default:
+        return 5;
+    }
+  }
+
+  /**
+   * 의미적 유사도 계산
+   */
+  private static calculateSemanticSimilarity(questionAnalysis: QuestionAnalysis, chunk: Chunk): number {
+    const questionWords = questionAnalysis.intent.toLowerCase().split(/\s+/);
+    const chunkWords = chunk.content.toLowerCase().split(/\s+/);
+    
+    // Jaccard 유사도
+    const intersection = new Set(questionWords.filter(word => chunkWords.includes(word)));
+    const union = new Set([...questionWords, ...chunkWords]);
+    
+    return intersection.size / union.size;
+  }
+
+  /**
+   * 확장된 동의어 목록 생성
+   */
+  private static getExpandedSynonyms(keywords: string[]): string[] {
+    const synonymMap: { [key: string]: string[] } = {
+      '금연': ['흡연금지', '담배금지', '니코틴금지', '흡연제한', '금연구역'],
+      '공동주택': ['아파트', '연립주택', '다세대주택', '주택단지', '아파트단지'],
+      '어린이집': ['보육시설', '유치원', '어린이보호시설', '보육원'],
+      '학교': ['교육시설', '학원', '교실', '강의실'],
+      '병원': ['의료시설', '클리닉', '의원', '보건소'],
+      '법령': ['법규', '규정', '조항', '법률', '시행령', '시행규칙'],
+      '위반': ['위배', '위법', '불법', '금지행위', '규정위반'],
+      '벌금': ['과태료', '처벌', '제재', '벌칙', '과징금'],
+      '신고': ['제보', '고발', '신청', '접수', '제출'],
+      '관리': ['운영', '관할', '담당', '처리', '시행']
+    };
+    
+    const synonyms: string[] = [];
+    keywords.forEach(keyword => {
+      synonyms.push(keyword);
+      if (synonymMap[keyword]) {
+        synonyms.push(...synonymMap[keyword]);
+      }
+    });
+    
+    return [...new Set(synonyms)]; // 중복 제거
   }
 
   /**
