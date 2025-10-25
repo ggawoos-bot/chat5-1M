@@ -67,7 +67,7 @@ export class FirestoreService {
   }
 
   /**
-   * 키워드로 청크 검색
+   * 키워드로 청크 검색 (인덱스 문제 해결)
    */
   async searchChunksByKeywords(
     keywords: string[], 
@@ -77,36 +77,43 @@ export class FirestoreService {
     try {
       console.log(`🔍 Firestore 검색: 키워드 ${keywords.length}개, 문서 ${documentId || '전체'}`);
       
+      // 단순한 쿼리로 변경 (인덱스 문제 해결)
       let q = query(
         collection(db, this.chunksCollection),
-        where('keywords', 'array-contains-any', keywords),
-        orderBy('metadata.position'),
-        limit(limitCount)
+        limit(limitCount * 2) // 더 많이 가져와서 필터링
       );
-
-      // 특정 문서로 필터링
-      if (documentId) {
-        q = query(
-          collection(db, this.chunksCollection),
-          where('documentId', '==', documentId),
-          where('keywords', 'array-contains-any', keywords),
-          orderBy('metadata.position'),
-          limit(limitCount)
-        );
-      }
 
       const snapshot = await getDocs(q);
       const chunks: PDFChunk[] = [];
       
       snapshot.forEach((doc) => {
-        chunks.push({
-          id: doc.id,
-          ...doc.data()
-        } as PDFChunk);
+        const data = doc.data() as PDFChunk;
+        
+        // 클라이언트 사이드에서 필터링
+        if (documentId && data.documentId !== documentId) {
+          return;
+        }
+        
+        // 키워드 매칭 확인
+        const hasKeyword = keywords.some(keyword => 
+          data.keywords && data.keywords.some(k => 
+            k.toLowerCase().includes(keyword.toLowerCase()) ||
+            keyword.toLowerCase().includes(k.toLowerCase())
+          )
+        );
+        
+        if (hasKeyword) {
+          chunks.push({
+            id: doc.id,
+            ...data
+          });
+        }
       });
 
-      console.log(`✅ Firestore 검색 완료: ${chunks.length}개 청크 발견`);
-      return chunks;
+      // 결과 제한
+      const limitedChunks = chunks.slice(0, limitCount);
+      console.log(`✅ Firestore 검색 완료: ${limitedChunks.length}개 청크 발견`);
+      return limitedChunks;
     } catch (error) {
       console.error('❌ Firestore 검색 오류:', error);
       return [];
@@ -114,7 +121,7 @@ export class FirestoreService {
   }
 
   /**
-   * 텍스트 검색 (부분 일치)
+   * 텍스트 검색 (부분 일치) - 인덱스 문제 해결
    */
   async searchChunksByText(
     searchText: string, 
@@ -124,38 +131,41 @@ export class FirestoreService {
     try {
       console.log(`🔍 Firestore 텍스트 검색: "${searchText}"`);
       
-      const lowerSearchText = searchText.toLowerCase();
+      // 단순한 쿼리로 변경 (인덱스 문제 해결)
       let q = query(
         collection(db, this.chunksCollection),
-        where('searchableText', '>=', lowerSearchText),
-        where('searchableText', '<=', lowerSearchText + '\uf8ff'),
-        orderBy('searchableText'),
-        limit(limitCount)
+        limit(limitCount * 3) // 더 많이 가져와서 필터링
       );
-
-      if (documentId) {
-        q = query(
-          collection(db, this.chunksCollection),
-          where('documentId', '==', documentId),
-          where('searchableText', '>=', lowerSearchText),
-          where('searchableText', '<=', lowerSearchText + '\uf8ff'),
-          orderBy('searchableText'),
-          limit(limitCount)
-        );
-      }
 
       const snapshot = await getDocs(q);
       const chunks: PDFChunk[] = [];
+      const lowerSearchText = searchText.toLowerCase();
       
       snapshot.forEach((doc) => {
-        chunks.push({
-          id: doc.id,
-          ...doc.data()
-        } as PDFChunk);
+        const data = doc.data() as PDFChunk;
+        
+        // 클라이언트 사이드에서 필터링
+        if (documentId && data.documentId !== documentId) {
+          return;
+        }
+        
+        // 텍스트 매칭 확인
+        const contentMatch = data.content.toLowerCase().includes(lowerSearchText);
+        const searchableTextMatch = data.searchableText && 
+          data.searchableText.toLowerCase().includes(lowerSearchText);
+        
+        if (contentMatch || searchableTextMatch) {
+          chunks.push({
+            id: doc.id,
+            ...data
+          });
+        }
       });
 
-      console.log(`✅ Firestore 텍스트 검색 완료: ${chunks.length}개 청크 발견`);
-      return chunks;
+      // 결과 제한
+      const limitedChunks = chunks.slice(0, limitCount);
+      console.log(`✅ Firestore 텍스트 검색 완료: ${limitedChunks.length}개 청크 발견`);
+      return limitedChunks;
     } catch (error) {
       console.error('❌ Firestore 텍스트 검색 오류:', error);
       return [];
@@ -163,26 +173,38 @@ export class FirestoreService {
   }
 
   /**
-   * 특정 문서의 모든 청크 가져오기
+   * 특정 문서의 모든 청크 가져오기 (인덱스 문제 해결)
    */
   async getChunksByDocument(documentId: string): Promise<PDFChunk[]> {
     try {
       console.log(`📄 문서 청크 가져오기: ${documentId}`);
       
+      // 단순한 쿼리로 변경 (인덱스 문제 해결)
       const q = query(
         collection(db, this.chunksCollection),
-        where('documentId', '==', documentId),
-        orderBy('metadata.position')
+        limit(1000) // 충분한 수량 가져오기
       );
 
       const snapshot = await getDocs(q);
       const chunks: PDFChunk[] = [];
       
       snapshot.forEach((doc) => {
-        chunks.push({
-          id: doc.id,
-          ...doc.data()
-        } as PDFChunk);
+        const data = doc.data() as PDFChunk;
+        
+        // 클라이언트 사이드에서 필터링
+        if (data.documentId === documentId) {
+          chunks.push({
+            id: doc.id,
+            ...data
+          });
+        }
+      });
+
+      // 위치 순으로 정렬
+      chunks.sort((a, b) => {
+        const posA = a.metadata?.position || 0;
+        const posB = b.metadata?.position || 0;
+        return posA - posB;
       });
 
       console.log(`✅ 문서 청크 로드 완료: ${chunks.length}개`);

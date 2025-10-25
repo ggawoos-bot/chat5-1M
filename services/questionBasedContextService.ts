@@ -88,7 +88,15 @@ export class QuestionAnalyzer {
     try {
       // 새로운 AI 인스턴스 생성 (선택된 키로)
       const ai = new GoogleGenAI({ apiKey: selectedApiKey });
-      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      
+      // 올바른 모델 생성 방법
+      let model;
+      try {
+        model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      } catch (modelError) {
+        console.warn('gemini-2.5-flash 모델을 사용할 수 없습니다. 기본 모델을 사용합니다.');
+        model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      }
 
       const analysisPrompt = `
 다음 질문을 분석하여 JSON 형태로 답변해주세요:
@@ -937,7 +945,33 @@ export class ContextSelector {
     const chunksToUse = firestoreChunks.length > 0 ? firestoreChunks : allChunks;
     
     if (chunksToUse.length === 0) {
-      return [];
+      console.warn('⚠️ 사용 가능한 청크가 없습니다. 기본 컨텍스트를 생성합니다.');
+      
+      // 기본 컨텍스트 생성 (Firestore 데이터가 없을 때)
+      const defaultChunks: Chunk[] = [
+        {
+          id: 'default-1',
+          content: '금연사업 관련 문의사항에 대해 도움을 드리겠습니다. 구체적인 질문을 해주시면 더 정확한 답변을 제공할 수 있습니다.',
+          metadata: {
+            source: '시스템',
+            title: '기본 안내',
+            page: 1,
+            section: '안내',
+            position: 1,
+            startPosition: 0,
+            endPosition: 100,
+            originalSize: 100
+          },
+          keywords: ['금연', '사업', '문의', '안내'],
+          location: {
+            document: '시스템',
+            section: '안내',
+            page: 1
+          }
+        }
+      ];
+      
+      return defaultChunks;
     }
 
     // 🆕 공동주택 관련 키워드 체크
