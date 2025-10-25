@@ -20,6 +20,11 @@ declare global {
 }
 
 export class GeminiService {
+  // 🚨 무한 루프 방지를 위한 플래그
+  private isCreatingSession: boolean = false;
+  private sessionCreationCount: number = 0;
+  private static readonly MAX_SESSION_CREATION_ATTEMPTS = 3;
+  
   private static readonly SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
 
 THINKING APPROACH:
@@ -1381,33 +1386,51 @@ Here is the source material:
 
   // 채팅 세션 생성 (하이브리드 방식: 매번 새로운 API 키 사용)
   async createNotebookChatSession(sourceText?: string): Promise<any> {
-    // 매번 새로운 API 키 선택
-    const selectedApiKey = this.getNextAvailableKey();
-    if (!selectedApiKey) {
-      throw new Error('사용 가능한 API 키가 없습니다.');
+    // 🚨 무한 루프 방지 체크
+    if (this.isCreatingSession) {
+      console.error('❌ 무한 루프 감지: 세션 생성이 이미 진행 중입니다.');
+      throw new Error('세션 생성 중입니다. 무한 루프를 방지합니다.');
     }
 
-    console.log(`채팅 세션 생성 - API 키: ${selectedApiKey.substring(0, 10)}...`);
-
-    // PDF 내용이 아직 초기화되지 않았다면 초기화
-    if (!this.isInitialized) {
-      await this.initializeWithPdfSources();
+    // 🚨 세션 생성 시도 횟수 체크
+    this.sessionCreationCount++;
+    if (this.sessionCreationCount > GeminiService.MAX_SESSION_CREATION_ATTEMPTS) {
+      console.error(`❌ 세션 생성 시도 횟수 초과: ${this.sessionCreationCount}회 (최대: ${GeminiService.MAX_SESSION_CREATION_ATTEMPTS}회)`);
+      this.sessionCreationCount = 0; // 리셋
+      throw new Error('세션 생성 시도 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.');
     }
 
-    // 압축된 PDF 내용 사용 (캐시된 내용)
-    let actualSourceText = sourceText || this.cachedSourceText || '';
-    
-    // 🔥 핵심 수정: 컨텍스트 길이 제한 적용
-    const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
-    if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
-      console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
-      actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
-      console.log(`✅ 컨텍스트 길이 조정: ${actualSourceText.length}자`);
-    }
-    
+    console.log(`🔄 세션 생성 시작 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
+    this.isCreatingSession = true;
+
+    try {
+      // 매번 새로운 API 키 선택
+      const selectedApiKey = this.getNextAvailableKey();
+      if (!selectedApiKey) {
+        throw new Error('사용 가능한 API 키가 없습니다.');
+      }
+
+      console.log(`채팅 세션 생성 - API 키: ${selectedApiKey.substring(0, 10)}...`);
+
+      // PDF 내용이 아직 초기화되지 않았다면 초기화
+      if (!this.isInitialized) {
+        await this.initializeWithPdfSources();
+      }
+
+      // 압축된 PDF 내용 사용 (캐시된 내용)
+      let actualSourceText = sourceText || this.cachedSourceText || '';
+      
+      // 🔥 핵심 수정: 컨텍스트 길이 제한을 더 엄격하게 적용
+      const MAX_CONTEXT_LENGTH = 5000; // 10,000자 → 5,000자로 축소
+      if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
+        console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
+        actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
+        console.log(`✅ 컨텍스트 길이 조정: ${actualSourceText.length}자`);
+      }
+      
       const systemInstruction = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', actualSourceText);
 
-    console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
+      console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
 
     try {
       // 새로운 AI 인스턴스 생성 (선택된 키로)
@@ -1440,6 +1463,7 @@ Here is the source material:
       this.recordApiCall(currentKeyId);
 
       this.currentChatSession = chat;
+      console.log(`✅ 세션 생성 완료 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
       return chat;
     } catch (error) {
       console.error('채팅 세션 생성 실패:', error);
@@ -1453,6 +1477,10 @@ Here is the source material:
       }
       
       throw error;
+    } finally {
+      // 🚨 무한 루프 방지 플래그 리셋
+      this.isCreatingSession = false;
+      console.log(`🔄 세션 생성 플래그 리셋 완료`);
     }
   }
 
