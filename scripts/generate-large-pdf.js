@@ -1,6 +1,6 @@
 /**
  * 1MB 이상의 큰 processed-pdfs.json 파일을 생성하는 스크립트
- * 기존 내용을 반복하여 확장하여 1MB 이상의 파일을 만듭니다.
+ * manifest.json을 읽어서 모든 PDF 파일을 포함하여 생성합니다.
  */
 
 import fs from 'fs';
@@ -273,6 +273,16 @@ async function main() {
     
     const publicDir = path.join(__dirname, '../public');
     const dataDir = path.join(publicDir, 'data');
+    const pdfDir = path.join(publicDir, 'pdf');
+    
+    // manifest.json 읽기
+    const manifestPath = path.join(pdfDir, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error('manifest.json 파일을 찾을 수 없습니다.');
+    }
+    
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    console.log('📋 PDF 파일 목록:', manifest);
     
     // data 디렉토리 생성
     if (!fs.existsSync(dataDir)) {
@@ -307,13 +317,9 @@ async function main() {
         estimatedTokens: Math.ceil(expandedText.length / 4),
         qualityScore: 95,
         lastUpdated: new Date().toISOString(),
-        pdfFiles: [
-          "국민건강증진법률 시행령 시행규칙(202508).pdf",
-          "금연구역 지정 관리 업무지침_2025개정판.pdf",
-          "금연지원서비스 통합시스템 사용자매뉴얼_지역사회 통합건강증진사업 안내.pdf"
-        ],
+        pdfFiles: manifest, // manifest.json에서 읽어온 모든 PDF 파일
         version: "6.0.0",
-        note: "Large file generation - 1MB+ content for testing"
+        note: "Large file generation - 1MB+ content for testing (manifest-based)"
       }
     };
     
@@ -331,6 +337,7 @@ async function main() {
     console.log(`전체 텍스트 크기: ${expandedText.length.toLocaleString()}자`);
     console.log(`청크 수: ${chunks.length}개`);
     console.log(`예상 토큰: ${result.metadata.estimatedTokens.toLocaleString()}개`);
+    console.log(`포함된 PDF 파일: ${manifest.length}개`);
     console.log('✅ 1MB 이상의 큰 파일이 성공적으로 생성되었습니다!');
     
   } catch (error) {
