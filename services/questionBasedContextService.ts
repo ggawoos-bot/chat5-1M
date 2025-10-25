@@ -5,6 +5,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { Chunk, QuestionAnalysis } from '../types';
+import { FirestoreService, PDFChunk } from './firestoreService';
 
 // API 키는 런타임에 동적으로 로딩 (브라우저 로딩 타이밍 문제 해결)
 
@@ -673,6 +674,7 @@ export class QuestionAnalyzer {
  */
 export class ContextSelector {
   private static chunks: Chunk[] = [];
+  private static firestoreService: FirestoreService = FirestoreService.getInstance();
   
   // 한국어 동의어 사전 (대폭 확장)
   private static readonly KOREAN_SYNONYMS: Record<string, string[]> = {
@@ -866,14 +868,75 @@ export class ContextSelector {
   }
 
   /**
-   * 질문 분석 결과를 바탕으로 관련 컨텍스트 선택 (개선된 버전) - 공동주택 특별 처리
+   * 질문 분석 결과를 바탕으로 관련 컨텍스트 선택 (Firestore 지원) - 공동주택 특별 처리
    */
-  static selectRelevantContexts(
+  static async selectRelevantContexts(
     questionAnalysis: QuestionAnalysis,
     allChunks: Chunk[],
     maxChunks: number = 5
-  ): Chunk[] {
-    if (!questionAnalysis || allChunks.length === 0) {
+  ): Promise<Chunk[]> {
+    if (!questionAnalysis) {
+      return [];
+    }
+
+    // 🔥 Firestore에서 먼저 검색 시도
+    let firestoreChunks: Chunk[] = [];
+    try {
+      console.log('🔍 Firestore에서 컨텍스트 검색 중...');
+      
+      // 키워드 기반 검색
+      const keywordResults = await this.firestoreService.searchChunksByKeywords(
+        questionAnalysis.keywords,
+        undefined,
+        maxChunks * 2 // 더 많이 가져와서 필터링
+      );
+      
+      // 텍스트 기반 검색
+      const textResults = await this.firestoreService.searchChunksByText(
+        questionAnalysis.keywords.join(' '),
+        undefined,
+        maxChunks * 2
+      );
+      
+      // Firestore 청크를 Chunk 형식으로 변환
+      const convertFirestoreChunk = (firestoreChunk: PDFChunk): Chunk => ({
+        id: firestoreChunk.id || '',
+        content: firestoreChunk.content,
+        metadata: {
+          source: firestoreChunk.documentId,
+          title: firestoreChunk.documentId,
+          page: firestoreChunk.metadata.page,
+          section: firestoreChunk.metadata.section,
+          position: firestoreChunk.metadata.position,
+          startPosition: firestoreChunk.metadata.startPos,
+          endPosition: firestoreChunk.metadata.endPos,
+          originalSize: firestoreChunk.metadata.originalSize
+        },
+        keywords: firestoreChunk.keywords,
+        location: {
+          document: firestoreChunk.documentId,
+          section: firestoreChunk.metadata.section,
+          page: firestoreChunk.metadata.page
+        }
+      });
+      
+      // 중복 제거 및 변환
+      const allFirestoreResults = [...keywordResults, ...textResults];
+      const uniqueResults = allFirestoreResults.filter((chunk, index, self) => 
+        index === self.findIndex(c => c.id === chunk.id)
+      );
+      
+      firestoreChunks = uniqueResults.map(convertFirestoreChunk);
+      console.log(`✅ Firestore 검색 완료: ${firestoreChunks.length}개 청크 발견`);
+      
+    } catch (error) {
+      console.warn('Firestore 검색 실패, 로컬 청크 사용:', error);
+    }
+    
+    // Firestore 결과가 있으면 사용, 없으면 로컬 청크 사용
+    const chunksToUse = firestoreChunks.length > 0 ? firestoreChunks : allChunks;
+    
+    if (chunksToUse.length === 0) {
       return [];
     }
 
@@ -897,7 +960,7 @@ export class ContextSelector {
     );
 
     // 키워드 기반 점수 계산 (개선된 버전)
-    const scoredChunks = allChunks.map(chunk => {
+    const scoredChunks = chunksToUse.map(chunk => {
       let score = 0;
 
       // 1. 키워드 매칭 점수 (기본)
@@ -988,7 +1051,7 @@ export class ContextSelector {
   }
 
   /**
-   * 질문을 분석하고 관련 컨텍스트를 선택하는 통합 메서드
+   * 질문을 분석하고 관련 컨텍스트를 선택하는 통합 메서드 (Firestore 지원)
    */
   static async selectRelevantContext(
     question: string, 
@@ -1000,7 +1063,7 @@ export class ContextSelector {
       return [];
     }
     
-    return this.selectRelevantContexts(questionAnalysis, allChunks);
+    return await this.selectRelevantContexts(questionAnalysis, allChunks);
   }
 }
 

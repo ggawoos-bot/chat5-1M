@@ -6,7 +6,7 @@ import { rpdService } from './rpdService';
 import { log } from './loggingService';
 import { progressiveLoadingService, LoadingProgress } from './progressiveLoadingService';
 import { memoryOptimizationService, MemoryStats } from './memoryOptimizationService';
-import { cachingService, CachedPDF } from './cachingService';
+import { FirestoreService, PDFChunk } from './firestoreService';
 
 // API 키는 런타임에 동적으로 로딩 (브라우저 로딩 타이밍 문제 해결)
 
@@ -146,6 +146,7 @@ export class GeminiService {
   private ai: GoogleGenAI | null = null;
   private currentChatSession: any = null;
   private cachedSourceText: string | null = null;
+  private firestoreService: FirestoreService;
 
   /**
    * 문서 유형 판별 함수
@@ -220,9 +221,9 @@ export class GeminiService {
   private memoryStats: MemoryStats | null = null;
   private isProgressiveLoadingEnabled: boolean = true;
   private isMemoryOptimizationEnabled: boolean = true;
-  private isCachingEnabled: boolean = true;
 
   constructor() {
+    this.firestoreService = FirestoreService.getInstance();
     this.initializeAI();
     this.initializePerformanceServices();
     // 비동기 로딩은 initializeWithPdfSources에서 처리
@@ -233,11 +234,7 @@ export class GeminiService {
    */
   private async initializePerformanceServices(): Promise<void> {
     try {
-      // 캐싱 서비스 초기화
-      if (this.isCachingEnabled) {
-        await cachingService.initialize();
-        console.log('캐싱 서비스 초기화 완료');
-      }
+      // 캐싱 서비스 제거 (Firestore 전용)
 
       // 메모리 최적화 서비스는 이미 초기화됨
       if (this.isMemoryOptimizationEnabled) {
@@ -811,7 +808,7 @@ export class GeminiService {
     }
   }
 
-  // PDF 내용을 한 번만 로드하고 압축하여 캐시 (사전 처리 데이터 우선)
+  // PDF 내용을 Firestore에서 로드하고 압축하여 캐시 (Firestore 전용)
   async initializeWithPdfSources(): Promise<void> {
     if (this.isInitialized && this.cachedSourceText) {
       console.log('PDF sources already initialized');
@@ -824,21 +821,16 @@ export class GeminiService {
       // 0. 소스 목록을 동적으로 로드
       await this.loadDefaultSources();
       
-      // 1. 사전 처리된 데이터 로드 시도 (최우선)
-      const preprocessedText = await this.loadPreprocessedData();
-      if (preprocessedText) {
-        console.log('사전 처리된 데이터 사용 완료');
+      // 1. Firestore에서 데이터 로드 시도 (최우선)
+      const firestoreText = await this.loadFromFirestore();
+      if (firestoreText) {
+        console.log('Firestore 데이터 사용 완료');
         return;
       }
       
-      // 2. 캐시에서 데이터 로드 시도 (품질 보장)
-      if (this.isCachingEnabled) {
-        const cachedData = await this.loadFromCache();
-        if (cachedData) {
-          console.log('캐시된 데이터 사용 완료 - 답변 품질 100% 보장');
-          return;
-        }
-      }
+      // 2. 실시간 PDF 파싱 (Firestore 실패시만)
+      console.log('Firestore 데이터가 없어 실시간 PDF 파싱을 시도합니다...');
+      await this.loadPdfSourcesOptimized();
       
       // 3. 백그라운드 프리로딩으로 답변 품질 100% 보장
       console.log('백그라운드 프리로딩 시작 - 답변 품질 최우선 보장');
@@ -967,10 +959,7 @@ export class GeminiService {
     this.compressionResult = await pdfCompressionService.compressPdfContent(combinedText);
     this.cachedSourceText = this.compressionResult.compressedText;
 
-    // 캐시에 저장
-    if (this.isCachingEnabled) {
-      await this.saveToCache(loadedPDFs);
-    }
+    // 캐시 저장 제거 (Firestore 전용)
 
     // 메모리 최적화
     if (this.isMemoryOptimizationEnabled) {
@@ -1076,65 +1065,7 @@ export class GeminiService {
       .map(item => item.file);
   }
 
-  /**
-   * 캐시에서 데이터 로드
-   */
-  private async loadFromCache(): Promise<boolean> {
-    try {
-      const pdfFiles = await this.getPDFFileList();
-      const cachedPDFs: CachedPDF[] = [];
-      
-      for (const filename of pdfFiles) {
-        const cachedPDF = await cachingService.getCachedPDF(filename);
-        if (cachedPDF) {
-          cachedPDFs.push(cachedPDF);
-        }
-      }
-      
-      if (cachedPDFs.length === 0) {
-        return false;
-      }
-      
-      // 캐시된 데이터로 초기화
-      const combinedText = cachedPDFs.map(pdf => pdf.text).join('\n--- END OF DOCUMENT ---\n\n--- START OF DOCUMENT ---\n');
-      this.fullPdfText = combinedText;
-      
-      // 청크 설정
-      this.allChunks = cachedPDFs.flatMap(pdf => pdf.chunks);
-      contextSelector.setChunks(this.allChunks);
-      
-      // 압축 처리
-      this.compressionResult = await pdfCompressionService.compressPdfContent(combinedText);
-      this.cachedSourceText = this.compressionResult.compressedText;
-      
-      console.log(`캐시에서 ${cachedPDFs.length}개 PDF 로드 완료`);
-      return true;
-    } catch (error) {
-      console.warn('캐시 로드 실패:', error);
-      return false;
-    }
-  }
 
-  /**
-   * 캐시에 데이터 저장
-   */
-  private async saveToCache(results: any[]): Promise<void> {
-    try {
-      for (const result of results) {
-        if (result.success && result.text && result.chunks) {
-          await cachingService.cachePDF(
-            result.filename,
-            result.text,
-            result.chunks,
-            '1.0.0'
-          );
-        }
-      }
-      console.log('캐시 저장 완료');
-    } catch (error) {
-      console.warn('캐시 저장 실패:', error);
-    }
-  }
 
   /**
    * 메모리 사용량 최적화
@@ -1161,14 +1092,12 @@ export class GeminiService {
     memoryStats: MemoryStats | null;
     isProgressiveLoadingEnabled: boolean;
     isMemoryOptimizationEnabled: boolean;
-    isCachingEnabled: boolean;
   } {
     return {
       loadingProgress: this.loadingProgress,
       memoryStats: this.memoryStats,
       isProgressiveLoadingEnabled: this.isProgressiveLoadingEnabled,
-      isMemoryOptimizationEnabled: this.isMemoryOptimizationEnabled,
-      isCachingEnabled: this.isCachingEnabled
+      isMemoryOptimizationEnabled: this.isMemoryOptimizationEnabled
     };
   }
 
@@ -1186,13 +1115,10 @@ export class GeminiService {
     if (settings.memoryOptimization !== undefined) {
       this.isMemoryOptimizationEnabled = settings.memoryOptimization;
     }
-    if (settings.caching !== undefined) {
-      this.isCachingEnabled = settings.caching;
-    }
+    // 캐싱 설정 제거 (Firestore 전용)
     console.log('성능 설정 업데이트:', {
       progressiveLoading: this.isProgressiveLoadingEnabled,
-      memoryOptimization: this.isMemoryOptimizationEnabled,
-      caching: this.isCachingEnabled
+      memoryOptimization: this.isMemoryOptimizationEnabled
     });
   }
 
@@ -1250,16 +1176,7 @@ export class GeminiService {
   /**
    * 캐시 정리
    */
-  async cleanupCache(): Promise<void> {
-    try {
-      if (this.isCachingEnabled) {
-        await cachingService.cleanupOldCache();
-        console.log('캐시 정리 완료');
-      }
-    } catch (error) {
-      console.warn('캐시 정리 실패:', error);
-    }
-  }
+  // 캐시 정리 제거 (Firestore 전용)
 
   /**
    * 메모리 정리
@@ -1276,52 +1193,83 @@ export class GeminiService {
     }
   }
 
-  // 사전 처리된 데이터 로드 (최우선)
-  async loadPreprocessedData(): Promise<string | null> {
+  // Firestore에서 데이터 로드 (최우선)
+  async loadFromFirestore(): Promise<string | null> {
     try {
-      console.log('사전 처리된 데이터 로드 시도...');
-      // 상대 경로 사용 (GitHub Pages 호환)
-      const response = await fetch('./data/processed-pdfs.json');
+      console.log('Firestore에서 데이터 로드 시도...');
       
-      if (!response.ok) {
-        throw new Error(`사전 처리된 데이터를 찾을 수 없습니다: ${response.status}`);
+      // Firestore 상태 확인
+      const stats = await this.firestoreService.getDatabaseStats();
+      console.log('Firestore 상태:', stats);
+      
+      if (stats.totalChunks === 0) {
+        console.log('Firestore에 데이터가 없습니다.');
+        return null;
       }
       
-      const data = await response.json();
+      // 모든 PDF 문서의 청크를 가져와서 텍스트 생성
+      const allChunks = await this.firestoreService.getAllDocuments();
+      let fullText = '';
+      const chunks: Chunk[] = [];
       
-      if (!data.compressedText || !data.chunks) {
-        throw new Error('사전 처리된 데이터 형식이 올바르지 않습니다.');
+      for (const doc of allChunks) {
+        const docChunks = await this.firestoreService.getChunksByDocument(doc.id);
+        
+        // Firestore 청크를 Chunk 형식으로 변환
+        const convertedChunks = docChunks.map(firestoreChunk => ({
+          id: firestoreChunk.id || '',
+          content: firestoreChunk.content,
+          metadata: {
+            source: doc.filename,
+            title: doc.title,
+            page: firestoreChunk.metadata.page,
+            section: firestoreChunk.metadata.section,
+            position: firestoreChunk.metadata.position,
+            startPosition: firestoreChunk.metadata.startPos,
+            endPosition: firestoreChunk.metadata.endPos,
+            originalSize: firestoreChunk.metadata.originalSize,
+            documentType: this.getDocumentType(doc.filename)
+          },
+          keywords: firestoreChunk.keywords,
+          location: {
+            document: doc.filename,
+            section: firestoreChunk.metadata.section,
+            page: firestoreChunk.metadata.page
+          }
+        }));
+        
+        chunks.push(...convertedChunks);
+        fullText += `[${doc.filename}]\n${docChunks.map(c => c.content).join('\n\n')}\n\n---\n\n`;
       }
       
-      // 사전 처리된 데이터 설정
-      this.cachedSourceText = data.compressedText;
-      this.fullPdfText = data.fullText || data.compressedText;
-      this.allChunks = data.chunks || [];
+      // 압축된 텍스트 생성
+      const compressedText = await pdfCompressionService.compressText(fullText);
+      
+      // 데이터 설정
+      this.cachedSourceText = compressedText;
+      this.fullPdfText = fullText;
+      this.allChunks = chunks;
       this.isInitialized = true;
       
       // 압축 결과 설정
       this.compressionResult = {
-        compressedText: data.compressedText,
-        originalLength: data.metadata?.originalSize || data.compressedText.length,
-        compressedLength: data.compressedText.length,
-        compressionRatio: data.metadata?.compressionRatio || 1.0,
-        estimatedTokens: data.metadata?.estimatedTokens || Math.ceil(data.compressedText.length / 4),
-        qualityScore: data.metadata?.qualityScore || 85
+        compressedText: compressedText,
+        originalLength: fullText.length,
+        compressedLength: compressedText.length,
+        compressionRatio: fullText.length / compressedText.length,
+        estimatedTokens: Math.ceil(compressedText.length / 4),
+        qualityScore: 95 // Firestore 데이터는 높은 품질
       };
       
-      // 컨텍스트 선택기에 청크 설정
-      contextSelector.setChunks(this.allChunks);
+      console.log(`Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${compressedText.length.toLocaleString()}자`);
+      return compressedText;
       
-      console.log(`사전 처리된 데이터 로드 완료: ${data.compressedText.length.toLocaleString()}자, ${this.allChunks.length}개 청크`);
-      console.log(`압축률: ${(this.compressionResult.compressionRatio * 100).toFixed(1)}%`);
-      
-      return data.compressedText;
     } catch (error) {
-      console.warn('사전 처리된 데이터 로드 실패, 실시간 파싱으로 폴백:', error);
-      console.log('폴백 원인:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('Firestore 데이터 로드 실패:', error);
       return null;
     }
   }
+
 
   // 실제 PDF 파일들을 파싱하여 소스 텍스트 생성 (최적화된 버전)
   async loadPdfSourcesOptimized(): Promise<string> {
