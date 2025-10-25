@@ -36,6 +36,19 @@ IMPORTANT INSTRUCTIONS:
     |----------|----------|----------|
     | Data 1   | Data 2   | Data 3   |
 14. Always include the separator row (---) between header and data rows
+
+🆕 SPECIAL FOCUS AREAS:
+- APARTMENT COMPLEXES (공동주택): Pay special attention to questions about apartment complexes, including:
+  * 공동주택 (apartment complexes), 아파트 (apartments), 오피스텔 (office-tels), 빌라 (villas)
+  * 필로티 (pilotis), 공용공간 (common areas), 복도 (corridors), 계단 (stairs)
+  * 세대주 (household heads), 입주자 (residents), 관리사무소 (management office)
+  * 동의서 (consent forms), 투표 (voting), 신청절차 (application procedures)
+  * 금연구역 지정 (no-smoking zone designation) for apartment complexes
+- CHILDCARE FACILITIES (어린이집): Distinguish from apartment complexes and focus on:
+  * 어린이집 (childcare centers), 유치원 (kindergartens), 보육시설 (childcare facilities)
+  * 10미터 경계 (10-meter boundary), 어린이보호 (child protection)
+  * 교육기관 (educational institutions), 보육법 (childcare law)
+
 15. For source citations in tables, use appropriate reference format based on document type:
     - LEGAL DOCUMENTS (법령): Use specific law type with article references (조항)
       * "국민건강증진법 제1조" for 국민건강증진법률 시행령 시행규칙 (법률 조항)
