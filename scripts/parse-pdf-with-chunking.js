@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
-// DOMMatrix polyfill for Node.js environment
+// GitHub Actions 환경을 위한 완전한 폴리필 설정
 if (typeof globalThis.DOMMatrix === 'undefined') {
   globalThis.DOMMatrix = class DOMMatrix {
     constructor(init) {
@@ -49,6 +49,49 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
         e: this.e + x,
         f: this.f + y
       });
+    }
+    
+    multiply(other) {
+      return new DOMMatrix({
+        a: this.a * other.a + this.c * other.b,
+        b: this.b * other.a + this.d * other.b,
+        c: this.a * other.c + this.c * other.d,
+        d: this.b * other.c + this.d * other.d,
+        e: this.a * other.e + this.c * other.f + this.e,
+        f: this.b * other.e + this.d * other.f + this.f
+      });
+    }
+  };
+}
+
+// ImageData 폴리필
+if (typeof globalThis.ImageData === 'undefined') {
+  globalThis.ImageData = class ImageData {
+    constructor(data, width, height) {
+      this.data = data || new Uint8ClampedArray(width * height * 4);
+      this.width = width;
+      this.height = height;
+    }
+  };
+}
+
+// Path2D 폴리필
+if (typeof globalThis.Path2D === 'undefined') {
+  globalThis.Path2D = class Path2D {
+    constructor() {
+      this.commands = [];
+    }
+    
+    moveTo(x, y) {
+      this.commands.push(['moveTo', x, y]);
+    }
+    
+    lineTo(x, y) {
+      this.commands.push(['lineTo', x, y]);
+    }
+    
+    arc(x, y, radius, startAngle, endAngle) {
+      this.commands.push(['arc', x, y, radius, startAngle, endAngle]);
     }
   };
 }
@@ -183,7 +226,24 @@ function extractSection(content) {
   return '일반';
 }
 
-// 파일명 기반 샘플 텍스트 생성 (fallback용)
+// 가짜 데이터 감지 함수
+function isSampleData(text) {
+  const samplePatterns = [
+    /제1조\(목적\) 이 법령은 국민의 건강증진을 위한 금연사업의 효율적 추진을 위하여/,
+    /제2조\(정의\) 이 법령에서 사용하는 용어의 뜻은 다음과 같다/,
+    /금연이란 담배를 피우지 아니하는 것을 말한다/,
+    /금연구역이란 금연이 의무화된 장소를 말한다/,
+    /이 지침은 금연구역의 지정 및 관리에 관한 업무를 효율적으로 수행하기 위하여/,
+    /금연지원서비스 통합시스템은 금연을 원하는 국민에게 종합적인 지원서비스를 제공하기 위한/
+  ];
+  
+  const matchCount = samplePatterns.filter(pattern => pattern.test(text)).length;
+  
+  // 2개 이상 패턴 매칭 시 가짜 데이터로 판단
+  return matchCount >= 2;
+}
+
+// 파일명 기반 샘플 텍스트 생성 (더 이상 사용하지 않음)
 function generateSampleTextFromFilename(filename) {
   const baseText = `
 ${filename}
@@ -319,18 +379,40 @@ async function processPdfFile(pdfPath, pdfIndex) {
     const pdfBuffer = fs.readFileSync(pdfPath);
     let data;
     
-    try {
-      data = await pdfParse(pdfBuffer);
-    } catch (pdfError) {
-      console.warn(`⚠️ PDF 파싱 실패, 대안 방법 사용: ${pdfError.message}`);
-      
-      // 대안: 파일명 기반 샘플 텍스트 생성
-      const filename = path.basename(pdfPath, '.pdf');
-      data = {
-        text: generateSampleTextFromFilename(filename),
-        numpages: 1,
-        info: { Title: filename }
-      };
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`PDF 파싱 시도 ${attempt}/${maxRetries}: ${path.basename(pdfPath)}`);
+        data = await pdfParse(pdfBuffer);
+        
+        // 데이터 검증
+        if (!data.text || data.text.trim().length < 100) {
+          throw new Error('파싱된 텍스트가 너무 짧거나 비어있습니다.');
+        }
+        
+        // 가짜 데이터 패턴 검사
+        if (isSampleData(data.text)) {
+          throw new Error('샘플 데이터가 감지되었습니다.');
+        }
+        
+        console.log(`✅ PDF 파싱 성공: ${data.text.length.toLocaleString()}자`);
+        break;
+        
+      } catch (error) {
+        lastError = error;
+        console.warn(`⚠️ PDF 파싱 실패 (시도 ${attempt}): ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    
+    // 모든 시도 실패 시 오류 발생 (가짜 데이터 생성 금지)
+    if (!data) {
+      throw new Error(`PDF 파싱 완전 실패: ${lastError?.message || '알 수 없는 오류'}`);
     }
     
     console.log(`✅ 파싱 완료: ${data.text.length.toLocaleString()}자`);

@@ -18,6 +18,9 @@ export interface SourceInfo {
   title: string;
   content: string;
   type: 'pdf' | 'text' | 'url';
+  section?: string;
+  page?: number;
+  documentType?: 'legal' | 'guideline';
 }
 
 export interface Chunk {
@@ -30,12 +33,16 @@ export interface Chunk {
     chunkIndex: number;
     startPosition: number;
     endPosition: number;
+    articles?: string[];
+    sectionTitle?: string;
+    documentType?: 'legal' | 'guideline';
   };
   keywords: string[];
   location: {
     document: string;
     section?: string;
     subsection?: string;
+    page?: number;
   };
   relevanceScore?: number;
 }

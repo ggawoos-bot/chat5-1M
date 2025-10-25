@@ -26,6 +26,13 @@ jobs:
     - name: Install dependencies
       run: npm install
       
+    - name: Create required directories
+      run: |
+        echo "📁 필요한 디렉토리 생성 중..."
+        mkdir -p public/data
+        mkdir -p dist/data
+        echo "✅ 디렉토리 생성 완료"
+      
     - name: Process PDFs with custom settings
       run: |
         echo "Processing PDFs with settings:"
