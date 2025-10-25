@@ -24,7 +24,7 @@ export interface CompressionOptions {
 
 export class PDFCompressionService {
   private static readonly DEFAULT_OPTIONS: CompressionOptions = {
-    maxTokens: 200000, // 20만 토큰 (약 80만자)
+    maxTokens: 2500, // 2,500 토큰 (약 10,000자)
     preserveKeywords: [
       // 핵심 키워드 (높은 가중치)
       '금연', '금연구역', '건강증진', '시행령', '시행규칙',
@@ -847,7 +847,7 @@ export class PDFCompressionService {
     const recommendations: string[] = [];
     
     // 토큰 수 검증
-    if (result.estimatedTokens > 200000) {
+    if (result.estimatedTokens > 2500) {
       warnings.push(`토큰 수가 많습니다: ${result.estimatedTokens.toLocaleString()}개`);
       recommendations.push('더 많은 청크를 제거하거나 압축률을 높이세요.');
     }
@@ -886,7 +886,7 @@ export class PDFCompressionService {
     } catch (error) {
       console.error('텍스트 압축 실패:', error);
       // 폴백: 원본 텍스트를 최대 길이로 제한
-      const maxLength = 800000; // 80만자 제한
+      const maxLength = 10000; // 1만자 제한 (GitHub Pages 수준)
       return text.length > maxLength ? text.substring(0, maxLength) : text;
     }
   }

@@ -72,10 +72,11 @@ export class FirestoreService {
   async searchChunksByKeywords(
     keywords: string[], 
     documentId?: string, 
-    limitCount: number = 10
+    limitCount: number = 5
   ): Promise<PDFChunk[]> {
     try {
-      console.log(`🔍 Firestore 검색: 키워드 ${keywords.length}개, 문서 ${documentId || '전체'}`);
+      console.log(`🔍 Firestore 검색 시작: 키워드 ${keywords.length}개, 문서 ${documentId || '전체'}`);
+      console.log(`🔍 검색 키워드:`, keywords);
       
       // 단순한 쿼리로 변경 (인덱스 문제 해결)
       let q = query(
@@ -83,7 +84,10 @@ export class FirestoreService {
         limit(limitCount * 2) // 더 많이 가져와서 필터링
       );
 
+      console.log(`🔍 Firestore 쿼리 실행 중...`);
       const snapshot = await getDocs(q);
+      console.log(`🔍 Firestore 쿼리 결과: ${snapshot.size}개 문서 조회됨`);
+      
       const chunks: PDFChunk[] = [];
       
       snapshot.forEach((doc) => {
@@ -112,10 +116,12 @@ export class FirestoreService {
 
       // 결과 제한
       const limitedChunks = chunks.slice(0, limitCount);
-      console.log(`✅ Firestore 검색 완료: ${limitedChunks.length}개 청크 발견`);
+      console.log(`✅ Firestore 검색 완료: ${limitedChunks.length}개 청크 발견 (전체 ${chunks.length}개 중)`);
       return limitedChunks;
     } catch (error) {
       console.error('❌ Firestore 검색 오류:', error);
+      console.error('❌ 오류 상세:', error.message);
+      console.error('❌ 오류 스택:', error.stack);
       return [];
     }
   }
@@ -126,7 +132,7 @@ export class FirestoreService {
   async searchChunksByText(
     searchText: string, 
     documentId?: string, 
-    limitCount: number = 10
+    limitCount: number = 3
   ): Promise<PDFChunk[]> {
     try {
       console.log(`🔍 Firestore 텍스트 검색: "${searchText}"`);
@@ -134,7 +140,7 @@ export class FirestoreService {
       // 단순한 쿼리로 변경 (인덱스 문제 해결)
       let q = query(
         collection(db, this.chunksCollection),
-        limit(limitCount * 3) // 더 많이 가져와서 필터링
+        limit(limitCount * 2) // 더 많이 가져와서 필터링
       );
 
       const snapshot = await getDocs(q);
@@ -216,21 +222,28 @@ export class FirestoreService {
   }
 
   /**
-   * 모든 PDF 문서 목록 가져오기
+   * 모든 PDF 문서 목록 가져오기 (인덱스 문제 해결)
    */
   async getAllDocuments(): Promise<PDFDocument[]> {
     try {
       console.log('📋 모든 PDF 문서 목록 가져오기');
       
+      // 단순한 쿼리로 변경 (인덱스 문제 해결)
       const q = query(
-        collection(db, this.documentsCollection),
-        orderBy('processedAt', 'desc')
+        collection(db, this.documentsCollection)
       );
 
+      console.log('🔍 Firestore 문서 쿼리 실행 중...');
       const snapshot = await getDocs(q);
+      console.log(`🔍 Firestore 문서 쿼리 결과: ${snapshot.size}개 문서 조회됨`);
+      
       const documents: PDFDocument[] = [];
       
       snapshot.forEach((doc) => {
+        console.log('🔍 문서 데이터:', {
+          id: doc.id,
+          data: doc.data()
+        });
         documents.push({
           id: doc.id,
           ...doc.data()
@@ -241,6 +254,8 @@ export class FirestoreService {
       return documents;
     } catch (error) {
       console.error('❌ 문서 목록 로드 오류:', error);
+      console.error('❌ 오류 상세:', error.message);
+      console.error('❌ 오류 스택:', error.stack);
       return [];
     }
   }

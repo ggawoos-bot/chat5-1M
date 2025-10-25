@@ -352,23 +352,35 @@ export class GeminiService {
     return true;
   }
 
-  // API 키를 교체하는 메서드
+  // API 키를 교체하는 메서드 (개선된 강제 키 로테이션)
   private switchToNextKey(): boolean {
     const newKey = this.getNextAvailableKey();
-    if (newKey && this.ai) {
+    if (newKey) {
       try {
-        this.ai = new GoogleGenAI({ apiKey: newKey });
-        console.log('API 키 교체 성공');
-        return true;
+        // 현재 키와 다른 키인지 확인
+        const currentKey = this.getApiKeys()[GeminiService.currentKeyIndex];
+        if (currentKey === newKey) {
+          console.log('⚠️ 같은 키가 선택됨, 강제로 다음 키로 이동...');
+          GeminiService.currentKeyIndex = (GeminiService.currentKeyIndex + 1) % this.getApiKeys().length;
+          const forcedNewKey = this.getNextAvailableKey();
+          if (forcedNewKey && forcedNewKey !== currentKey) {
+            console.log(`✅ 강제 키 교체: ${forcedNewKey.substring(0, 10)}...`);
+            return true;
+          }
+        } else {
+          console.log(`✅ 키 교체 성공: ${newKey.substring(0, 10)}...`);
+          return true;
+        }
       } catch (error) {
-        console.error('API 키 교체 실패:', error);
-        return false;
+        console.error('키 교체 중 오류:', error);
       }
     }
+    
+    console.log('❌ 사용 가능한 키가 없습니다.');
     return false;
   }
 
-  // API 호출 실패 시 키 교체 로직 (개선된 할당량 관리)
+  // API 호출 실패 시 키 교체 로직 (개선된 즉시 키 교체)
   private handleApiKeyFailure(usedKey: string, error: any): boolean {
     const failures = this.apiKeyFailures.get(usedKey) || 0;
     this.apiKeyFailures.set(usedKey, failures + 1);
@@ -376,16 +388,14 @@ export class GeminiService {
     console.warn(`API 키 실패 (${failures + 1}/3): ${usedKey.substring(0, 10)}...`);
     console.error('오류 상세:', error);
     
-    // 429 오류 (분당 제한)인 경우 특별 처리
-    if (error.message && (error.message.includes('429') || error.message.includes('RATE_LIMIT_EXCEEDED'))) {
-      console.log('분당 제한 초과 감지, 다음 키로 전환...');
-      // 분당 제한은 키 교체로 해결 가능
-      return this.switchToNextKey();
-    }
-    
-    // 할당량 초과 오류 처리
-    if (error.message && (error.message.includes('quota') || error.message.includes('RESOURCE_EXHAUSTED'))) {
-      console.warn('API 할당량 초과 감지, 다음 키로 전환...');
+    // 🔥 개선: 429/할당량 오류 시 즉시 키 교체
+    if (error.message && (
+      error.message.includes('429') || 
+      error.message.includes('RATE_LIMIT_EXCEEDED') ||
+      error.message.includes('quota') ||
+      error.message.includes('RESOURCE_EXHAUSTED')
+    )) {
+      console.log('🚨 할당량 초과 감지, 즉시 다음 키로 전환...');
       
       // RPD에서 해당 키 비활성화
       const keyIndex = this.getApiKeys().findIndex(key => key === usedKey);
@@ -398,19 +408,17 @@ export class GeminiService {
       return this.switchToNextKey();
     }
     
-    // quota_limit_value가 0인 경우 (키가 유효하지 않음)
-    if (error.message && error.message.includes('quota_limit_value') && error.message.includes('"0"')) {
-      console.warn('API 키 할당량이 0입니다. 다음 키로 전환...');
+    // 다른 오류들도 즉시 키 교체
+    if (error.message && (
+      error.message.includes('quota_limit_value') && error.message.includes('"0"') ||
+      error.message.includes('401') ||
+      error.message.includes('UNAUTHENTICATED')
+    )) {
+      console.warn('API 키 문제 감지, 다음 키로 전환...');
       return this.switchToNextKey();
     }
     
-    // 인증 오류 (API 키가 잘못된 경우)
-    if (error.message && (error.message.includes('401') || error.message.includes('UNAUTHENTICATED'))) {
-      console.warn('API 키 인증 실패, 다음 키로 전환...');
-      return this.switchToNextKey();
-    }
-    
-    // 키 교체 시도
+    // 기본적으로 키 교체 시도
     return this.switchToNextKey();
   }
 
@@ -422,7 +430,7 @@ export class GeminiService {
     return result;
   }
 
-  // 재시도 로직이 포함된 API 호출 래퍼
+  // 재시도 로직이 포함된 API 호출 래퍼 (개선된 키 로테이션)
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
     maxRetries: number = 3,
@@ -437,28 +445,40 @@ export class GeminiService {
         lastError = error;
         console.warn(`API 호출 실패 (시도 ${attempt}/${maxRetries}):`, error);
         
-        // 429 오류나 할당량 초과인 경우 지연 후 재시도
+        // 🔥 핵심 개선: 429/할당량 오류 시 즉시 키 교체
         if (error.message && (
           error.message.includes('429') || 
           error.message.includes('RATE_LIMIT_EXCEEDED') ||
           error.message.includes('quota') ||
           error.message.includes('RESOURCE_EXHAUSTED')
         )) {
-          if (attempt < maxRetries) {
-            const delay = retryDelay * Math.pow(2, attempt - 1); // 지수 백오프
-            console.log(`${delay}ms 후 재시도...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
+          console.log('🚨 할당량/429 오류 감지, 즉시 키 교체 시도...');
+          
+          // 즉시 키 교체 시도
+          const apiKeys = this.getApiKeys();
+          const currentKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
+          
+          if (this.handleApiKeyFailure(apiKeys[currentKeyIndex], error)) {
+            console.log('✅ 키 교체 성공, 즉시 재시도...');
+            continue; // 키 교체 후 즉시 재시도
+          } else {
+            console.log('❌ 키 교체 실패, 지연 후 재시도...');
+            if (attempt < maxRetries) {
+              const delay = retryDelay * Math.pow(2, attempt - 1);
+              console.log(`${delay}ms 후 재시도...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
           }
-        }
-        
-        // 키 교체 시도
-        const apiKeys = this.getApiKeys();
-        const currentKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
-        if (this.handleApiKeyFailure(apiKeys[currentKeyIndex], error)) {
-          if (attempt < maxRetries) {
-            console.log('API 키 교체 후 재시도...');
-            continue;
+        } else {
+          // 다른 오류의 경우 기존 로직
+          const apiKeys = this.getApiKeys();
+          const currentKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
+          if (this.handleApiKeyFailure(apiKeys[currentKeyIndex], error)) {
+            if (attempt < maxRetries) {
+              console.log('API 키 교체 후 재시도...');
+              continue;
+            }
           }
         }
         
@@ -614,6 +634,12 @@ export class GeminiService {
   private extractLegalArticles(pageText: string, filename: string): string[] {
     const articles: string[] = [];
     
+    // pageText가 undefined이거나 null인 경우 처리
+    if (!pageText || typeof pageText !== 'string') {
+      console.warn('extractLegalArticles: pageText is invalid', { pageText, filename });
+      return [];
+    }
+    
     // 파일명에서 법령 유형 판단
     const isEnforcementDecree = filename.includes('시행령');
     const isEnforcementRule = filename.includes('시행규칙');
@@ -635,9 +661,13 @@ export class GeminiService {
     
     // 각 패턴에 대해 매칭
     articlePatterns.forEach(pattern => {
-      const matches = pageText.match(pattern);
-      if (matches) {
-        articles.push(...matches);
+      try {
+        const matches = pageText.match(pattern);
+        if (matches) {
+          articles.push(...matches);
+        }
+      } catch (error) {
+        console.warn('extractLegalArticles: pattern matching failed', { error, pattern, pageText: pageText.substring(0, 100) });
       }
     });
     
@@ -1196,24 +1226,30 @@ export class GeminiService {
   // Firestore에서 데이터 로드 (최우선)
   async loadFromFirestore(): Promise<string | null> {
     try {
-      console.log('Firestore에서 데이터 로드 시도...');
+      console.log('🔍 Firestore에서 데이터 로드 시도...');
       
       // Firestore 상태 확인
+      console.log('🔍 Firestore 상태 확인 중...');
       const stats = await this.firestoreService.getDatabaseStats();
-      console.log('Firestore 상태:', stats);
+      console.log('🔍 Firestore 상태:', stats);
       
       if (stats.totalChunks === 0) {
-        console.log('Firestore에 데이터가 없습니다.');
+        console.log('⚠️ Firestore에 데이터가 없습니다.');
         return null;
       }
       
       // 모든 PDF 문서의 청크를 가져와서 텍스트 생성
-      const allChunks = await this.firestoreService.getAllDocuments();
+      console.log('🔍 PDF 문서 목록 가져오기...');
+      const allDocuments = await this.firestoreService.getAllDocuments();
+      console.log(`🔍 PDF 문서 ${allDocuments.length}개 발견:`, allDocuments.map(d => d.filename));
+      
       let fullText = '';
       const chunks: Chunk[] = [];
       
-      for (const doc of allChunks) {
+      for (const doc of allDocuments) {
+        console.log(`🔍 문서 청크 가져오기: ${doc.filename} (${doc.id})`);
         const docChunks = await this.firestoreService.getChunksByDocument(doc.id);
+        console.log(`🔍 ${doc.filename}에서 ${docChunks.length}개 청크 발견`);
         
         // Firestore 청크를 Chunk 형식으로 변환
         const convertedChunks = docChunks.map(firestoreChunk => ({
@@ -1258,11 +1294,13 @@ export class GeminiService {
         qualityScore: 100 // Firestore 데이터는 최고 품질 (압축 없음)
       };
       
-      console.log(`Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${fullText.length.toLocaleString()}자 (압축 없음)`);
+      console.log(`✅ Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${fullText.length.toLocaleString()}자 (압축 없음)`);
       return fullText;
       
     } catch (error) {
-      console.error('Firestore 데이터 로드 실패:', error);
+      console.error('❌ Firestore 데이터 로드 실패:', error);
+      console.error('❌ 오류 상세:', error.message);
+      console.error('❌ 오류 스택:', error.stack);
       return null;
     }
   }
@@ -1429,21 +1467,44 @@ export class GeminiService {
             }))
           });
 
-          // 3. 선택된 컨텍스트로 새 세션 생성 (개선된 포맷팅)
+          // 3. 선택된 컨텍스트로 새 세션 생성 (간소화된 포맷팅)
           const contextText = relevantChunks
             .map((chunk, index) => {
-              const relevanceScore = (chunk as any).relevanceScore || 0;
-              return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n관련도: ${relevanceScore.toFixed(2)}\n${chunk.content}`;
+              return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n${chunk.content}`;
             })
             .join('\n\n---\n\n');
 
+          // 컨텍스트 길이 검증 및 제한
+          const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
+          let finalContextText = contextText;
+          
+          if (contextText.length > MAX_CONTEXT_LENGTH) {
+            console.warn(`⚠️ 컨텍스트 길이 초과: ${contextText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
+            
+            // 청크 수를 줄여서 길이 제한
+            let reducedChunks = relevantChunks;
+            let reducedContext = contextText;
+            
+            while (reducedContext.length > MAX_CONTEXT_LENGTH && reducedChunks.length > 1) {
+              reducedChunks = reducedChunks.slice(0, -1);
+              reducedContext = reducedChunks
+                .map((chunk, index) => {
+                  return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n${chunk.content}`;
+                })
+                .join('\n\n---\n\n');
+            }
+            
+            finalContextText = reducedContext;
+            console.log(`✅ 컨텍스트 길이 조정: ${finalContextText.length}자 (${reducedChunks.length}개 청크)`);
+          }
+
           log.info(`컨텍스트 기반 세션 생성`, { 
-            contextLength: contextText.length,
+            contextLength: finalContextText.length,
             selectedChunks: relevantChunks.length
           });
 
           // 4. 새 채팅 세션 생성 (선택된 컨텍스트 사용)
-          const newSession = await this.createNotebookChatSession(contextText);
+          const newSession = await this.createNotebookChatSession(finalContextText);
 
           // 5. 스트리밍 응답 생성
           const stream = await newSession.sendMessageStream({ message: message });

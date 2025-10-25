@@ -171,11 +171,21 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 - complexity: simple(단순), medium(중간), complex(복잡)
 - keywords: 질문의 핵심을 나타내는 중요한 단어들
 - entities: 구체적인 명사, 기관명, 법령명 등
+
+**중요**: Markdown 코드 블록을 사용하지 말고 순수한 JSON 객체만 반환해주세요.
 `;
 
+    console.log(`🔍 AI 모델 호출 시작: ${model}`);
+    console.log(`🔍 프롬프트:`, analysisPrompt.substring(0, 200) + '...');
+    
     const result = await aiModel.generateContent(analysisPrompt);
       const response = await result.response;
       const text = response.text();
+      
+      console.log(`🔍 AI 원본 응답:`, text);
+      console.log(`🔍 응답 길이:`, text.length);
+      console.log(`🔍 응답 시작 부분:`, text.substring(0, 100));
+      console.log(`🔍 응답 끝 부분:`, text.substring(Math.max(0, text.length - 100)));
       
     return this.parseAnalysisResponse(text);
   }
@@ -185,21 +195,36 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
    */
   private parseAnalysisResponse(responseText: string): QuestionAnalysis {
     try {
-      // JSON 파싱 시도
-      const analysis = JSON.parse(responseText);
-        return {
+      console.log(`🔍 JSON 파싱 시작: ${responseText.length}자`);
+      
+      // 1. Markdown 코드 블록 제거
+      let cleanedText = responseText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*$/g, '')
+        .trim();
+      
+      console.log(`🔍 정제된 텍스트:`, cleanedText.substring(0, 200) + '...');
+      
+      // 2. JSON 파싱 시도
+      const analysis = JSON.parse(cleanedText);
+      
+      console.log(`✅ JSON 파싱 성공:`, analysis);
+      
+      return {
         intent: analysis.intent || '일반 문의',
-          keywords: analysis.keywords || [],
+        keywords: analysis.keywords || [],
         category: (analysis.category as QuestionAnalysis['category']) || 'general',
         complexity: (analysis.complexity as QuestionAnalysis['complexity']) || 'simple',
-          entities: analysis.entities || [],
-          context: analysis.context || ''
-        };
+        entities: analysis.entities || [],
+        context: analysis.context || ''
+      };
     } catch (error) {
       console.error('❌ AI 응답 파싱 실패:', error);
+      console.error('❌ 원본 응답:', responseText);
+      console.error('❌ 정제된 응답:', responseText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim());
       throw new Error('AI 응답을 파싱할 수 없습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
-    }
+  }
   }
 
   /**
@@ -208,6 +233,11 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 export class ContextSelector {
   private static chunks: Chunk[] = [];
   private static firestoreService: FirestoreService = FirestoreService.getInstance();
+  
+  // 컨텍스트 길이 제한 상수
+  private static readonly MAX_CONTEXT_LENGTH = 10000; // 10,000자 (GitHub Pages 수준)
+  private static readonly MAX_CHUNK_LENGTH = 3000; // 각 청크 최대 3,000자
+  private static readonly DEFAULT_MAX_CHUNKS = 3; // 기본 최대 청크 수
 
   /**
    * 청크 설정
@@ -276,7 +306,7 @@ export class ContextSelector {
   static async selectRelevantContexts(
     questionAnalysis: QuestionAnalysis,
     allChunks: Chunk[], // This will be the fallback if Firestore fails
-    maxChunks: number = 5
+    maxChunks: number = ContextSelector.DEFAULT_MAX_CHUNKS
   ): Promise<Chunk[]> {
     console.log(`🔍 컨텍스트 선택 시작: "${questionAnalysis.intent}"`);
     
@@ -286,7 +316,7 @@ export class ContextSelector {
       const firestoreResults = await this.firestoreService.searchChunksByKeywords(
         questionAnalysis.keywords,
         undefined,
-        maxChunks * 2
+        maxChunks
       );
       
       // Firestore 결과를 Chunk 형식으로 변환
@@ -322,7 +352,7 @@ export class ContextSelector {
         const textResults = await this.firestoreService.searchChunksByText(
           questionAnalysis.context,
           undefined,
-          maxChunks
+          maxChunks - firestoreChunks.length
         );
         
         // 중복 제거하면서 추가
@@ -357,7 +387,10 @@ export class ContextSelector {
     }
     
     // Firestore 결과가 있으면 사용, 없으면 로컬 청크 사용
-    const chunksToUse = firestoreChunks.length > 0 ? firestoreChunks : allChunks;
+    let chunksToUse = firestoreChunks.length > 0 ? firestoreChunks : allChunks;
+    
+    // 컨텍스트 길이 제한 적용
+    chunksToUse = this.applyContextLengthLimit(chunksToUse, maxChunks);
     
     if (chunksToUse.length === 0) {
       console.warn('⚠️ 사용 가능한 청크가 없습니다. 실시간 PDF 파싱을 강제 실행합니다.');
@@ -470,6 +503,47 @@ export class ContextSelector {
     console.log(`✅ 컨텍스트 선택 완료: ${sortedChunks.length}개 청크 (최고 점수: ${scoredChunks[0]?.score || 0})`);
     
     return sortedChunks;
+  }
+
+  /**
+   * 컨텍스트 길이 제한 적용
+   */
+  private static applyContextLengthLimit(chunks: Chunk[], maxChunks: number): Chunk[] {
+    if (chunks.length === 0) return chunks;
+    
+    // 1. 각 청크의 길이를 MAX_CHUNK_LENGTH로 제한
+    const trimmedChunks = chunks.map(chunk => ({
+      ...chunk,
+      content: chunk.content.length > this.MAX_CHUNK_LENGTH 
+        ? chunk.content.substring(0, this.MAX_CHUNK_LENGTH) + '...'
+        : chunk.content
+    }));
+    
+    // 2. 총 컨텍스트 길이 계산
+    let totalLength = 0;
+    const limitedChunks: Chunk[] = [];
+    
+    for (const chunk of trimmedChunks) {
+      const chunkLength = chunk.content.length;
+      
+      // 컨텍스트 길이 제한 확인
+      if (totalLength + chunkLength > this.MAX_CONTEXT_LENGTH) {
+        console.log(`⚠️ 컨텍스트 길이 제한 도달: ${totalLength}자 (제한: ${this.MAX_CONTEXT_LENGTH}자)`);
+        break;
+      }
+      
+      // 청크 수 제한 확인
+      if (limitedChunks.length >= maxChunks) {
+        console.log(`⚠️ 최대 청크 수 제한 도달: ${limitedChunks.length}개 (제한: ${maxChunks}개)`);
+        break;
+      }
+      
+      limitedChunks.push(chunk);
+      totalLength += chunkLength;
+    }
+    
+    console.log(`✅ 컨텍스트 길이 제한 적용: ${limitedChunks.length}개 청크, ${totalLength}자`);
+    return limitedChunks;
   }
 
   /**
