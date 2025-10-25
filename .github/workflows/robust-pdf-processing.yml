@@ -1,4 +1,4 @@
-name: Robust PDF Processing
+name: Firestore PDF Processing
 
 on:
   push:
@@ -8,16 +8,6 @@ on:
       - 'scripts/**'
   workflow_dispatch:
     inputs:
-      chunkSize:
-        description: '청크 크기 (문자 수)'
-        required: true
-        default: '2000'
-        type: string
-      overlapSize:
-        description: '오버랩 크기 (문자 수)'
-        required: true
-        default: '200'
-        type: string
       forceReprocess:
         description: '강제 재처리'
         required: false
@@ -79,12 +69,10 @@ jobs:
           fi
         done
         
-    - name: Process PDFs with robust error handling
+    - name: Process PDFs to Firestore
       run: |
-        echo "🚀 강화된 PDF 처리 시작..."
+        echo "🚀 Firestore PDF 처리 시작..."
         echo "환경변수 설정:"
-        echo "  CHUNK_SIZE: ${{ github.event.inputs.chunkSize || 2000 }}"
-        echo "  OVERLAP_SIZE: ${{ github.event.inputs.overlapSize || 200 }}"
         echo "  FORCE_REPROCESS: ${{ github.event.inputs.forceReprocess || false }}"
         
         # Node.js 환경 설정 (PDF 파싱 최적화)
@@ -93,8 +81,6 @@ jobs:
         export NODE_ENV="production"
         
         # 환경변수 설정
-        export CHUNK_SIZE=${{ github.event.inputs.chunkSize || 2000 }}
-        export OVERLAP_SIZE=${{ github.event.inputs.overlapSize || 200 }}
         export FORCE_REPROCESS=${{ github.event.inputs.forceReprocess || false }}
         export GITHUB_ACTIONS=true
         
@@ -106,70 +92,39 @@ jobs:
         echo "  NODE_ENV: $NODE_ENV"
         echo "  NODE_POLYFILLS: $NODE_POLYFILLS"
         
-        # 강화된 PDF 처리 스크립트 실행
-        echo "🔄 메인 PDF 처리 시도..."
-        if node scripts/robust-pdf-preprocess.js; then
-          echo "✅ 메인 PDF 처리 성공!"
+        # Firestore PDF 처리 스크립트 실행
+        echo "🔄 Firestore PDF 처리 시도..."
+        if node scripts/migrate-to-firestore.js; then
+          echo "✅ Firestore PDF 처리 성공!"
         else
-          echo "⚠️ 메인 PDF 처리 실패, 대체 방법 시도..."
-          node scripts/fallback-pdf-preprocess.js
-          echo "✅ 대체 PDF 처리 완료!"
+          echo "❌ Firestore PDF 처리 실패!"
+          exit 1
         fi
         
-        echo "✅ PDF 처리 완료!"
+        echo "✅ Firestore PDF 처리 완료!"
       env:
         VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+        FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
         
-    - name: Validate processed data
+    - name: Validate Firestore data
       run: |
-        echo "🔍 처리된 데이터 검증 중..."
+        echo "🔍 Firestore 데이터 검증 중..."
         
-        if [ ! -f "public/data/processed-pdfs.json" ]; then
-          echo "❌ processed-pdfs.json 파일이 생성되지 않았습니다."
-          exit 1
-        fi
-        
-        # JSON 파일 유효성 검사
-        if ! jq empty public/data/processed-pdfs.json; then
-          echo "❌ processed-pdfs.json이 유효한 JSON이 아닙니다."
-          exit 1
-        fi
-        
-        # 데이터 품질 검사
-        success_count=$(jq '.successfulFiles' public/data/processed-pdfs.json)
-        total_count=$(jq '.totalFiles' public/data/processed-pdfs.json)
-        failed_count=$(jq '.failedFiles' public/data/processed-pdfs.json)
-        
-        echo "📊 처리 결과:"
-        echo "  총 파일: $total_count"
-        echo "  성공: $success_count"
-        echo "  실패: $failed_count"
-        
-        # 실패율이 50% 이상이면 오류
-        if [ "$failed_count" -gt 0 ] && [ "$((failed_count * 100 / total_count))" -gt 50 ]; then
-          echo "❌ 실패율이 50%를 초과했습니다."
-          exit 1
-        fi
-        
-        # 필로티 검색 테스트
-        if grep -q "필로티" public/data/processed-pdfs.json; then
-          echo "✅ 필로티 검색 가능 확인"
+        # Firestore 연결 테스트
+        echo "🔄 Firestore 연결 테스트..."
+        if node scripts/validate-firestore-data.js; then
+          echo "✅ Firestore 데이터 검증 성공!"
         else
-          echo "⚠️ 경고: 필로티 검색 불가능"
-        fi
-        
-        # 가짜 데이터 검사
-        if grep -q "제1조(목적) 이 법령은 국민의 건강증진을 위한 금연사업의 효율적 추진을 위하여" public/data/processed-pdfs.json; then
-          echo "❌ 가짜 데이터 감지!"
+          echo "❌ Firestore 데이터 검증 실패!"
           exit 1
-        else
-          echo "✅ 가짜 데이터 없음"
         fi
         
-    - name: Run data validation script
-      run: |
-        echo "🔍 데이터 품질 검증 스크립트 실행..."
-        node scripts/validate-processed-data.js
+        echo "📊 Firestore 처리 결과:"
+        echo "  데이터베이스: Firestore"
+        echo "  컬렉션: pdf_documents, pdf_chunks"
+        echo "  검증: 완료"
         
     - name: Check for changes
       id: changes
@@ -187,15 +142,13 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add public/data/processed-pdfs.json
-        git add dist/data/processed-pdfs.json
-        git commit -m "Update processed-pdfs.json with robust processing [skip ci]
+        git add .
+        git commit -m "Update Firestore data with PDF processing [skip ci]
 
-        - 청크 크기: ${{ github.event.inputs.chunkSize || 2000 }}자
-        - 오버랩 크기: ${{ github.event.inputs.overlapSize || 200 }}자
+        - 데이터베이스: Firestore
         - 처리 시간: $(date)
         - 환경: GitHub Actions
-        - 품질 개선: 가짜 데이터 차단, 모든 단어 검색 가능"
+        - 품질 개선: Firestore 최적화, 실시간 검색"
         git push
         
     - name: Build and deploy
@@ -223,10 +176,10 @@ jobs:
       
     - name: Notify completion
       run: |
-        echo "🎉 강화된 PDF 처리 완료!"
+        echo "🎉 Firestore PDF 처리 완료!"
         echo "📊 처리 결과:"
-        echo "  성공: $(jq '.successfulFiles' public/data/processed-pdfs.json)개"
-        echo "  실패: $(jq '.failedFiles' public/data/processed-pdfs.json)개"
+        echo "  데이터베이스: Firestore"
+        echo "  컬렉션: pdf_documents, pdf_chunks"
         echo "  변경사항: ${{ steps.changes.outputs.changes }}"
-        echo "  필로티 검색: $(grep -q "필로티" public/data/processed-pdfs.json && echo "가능" || echo "불가능")"
-        echo "  가짜 데이터: $(grep -q "제1조(목적) 이 법령은 국민의 건강증진을 위한 금연사업의 효율적 추진을 위하여" public/data/processed-pdfs.json && echo "감지됨" || echo "없음")"
+        echo "  검색: 실시간 Firestore 검색"
+        echo "  품질: 최적화됨"

@@ -12,20 +12,29 @@ import { getFirestore, collection, addDoc, writeBatch, Timestamp } from 'firebas
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Firebase configuration
+// Firebase configuration (환경변수 우선)
 const firebaseConfig = {
-  apiKey: "AIzaSyAvdOyBT1Zk9rZ79nP2RvdhpfpIQjGfw8Q",
-  authDomain: "chat-4c3a7.firebaseapp.com",
-  projectId: "chat-4c3a7",
-  storageBucket: "chat-4c3a7.firebasestorage.app",
-  messagingSenderId: "995636644973",
-  appId: "1:995636644973:web:59554144cbaad5d1444364",
-  measurementId: "G-9T5TLP4SF1"
+  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAvdOyBT1Zk9rZ79nP2RvdhpfpIQjGfw8Q",
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-4c3a7.firebaseapp.com",
+  projectId: process.env.FIREBASE_PROJECT_ID || "chat-4c3a7",
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-4c3a7.firebasestorage.app",
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "995636644973",
+  appId: process.env.FIREBASE_APP_ID || "1:995636644973:web:59554144cbaad5d1444364",
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID || "G-9T5TLP4SF1"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// GitHub Actions 환경 감지
+const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+const forceReprocess = process.env.FORCE_REPROCESS === 'true';
+
+console.log(`🔧 환경 설정:`);
+console.log(`  GitHub Actions: ${isGitHubActions}`);
+console.log(`  강제 재처리: ${forceReprocess}`);
+console.log(`  Node.js 환경: ${process.env.NODE_ENV || 'development'}`);
 
 // 메모리 사용량 모니터링
 function getMemoryUsage() {
@@ -245,7 +254,13 @@ async function migrateToFirestore() {
     console.log(`  - 총 크기: ${Object.values(documentGroups).reduce((sum, group) => sum + group.totalSize, 0).toLocaleString()}자`);
     console.log(`⏱️ 소요 시간: ${duration}초`);
     console.log(`💾 최종 메모리 사용량: ${JSON.stringify(getMemoryUsage())}MB`);
-    console.log('\n✨ 이제 Firestore에서 데이터를 사용할 수 있습니다!');
+    
+    if (isGitHubActions) {
+      console.log('\n🎉 GitHub Actions에서 Firestore 마이그레이션 완료!');
+      console.log('✅ 이제 Firestore에서 데이터를 사용할 수 있습니다!');
+    } else {
+      console.log('\n✨ 이제 Firestore에서 데이터를 사용할 수 있습니다!');
+    }
     
   } catch (error) {
     console.error('\n❌ Firestore 마이그레이션 중 오류 발생:', error);

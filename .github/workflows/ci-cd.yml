@@ -48,6 +48,7 @@ jobs:
         mkdir -p public/data
         mkdir -p dist/data
         echo "✅ 디렉토리 생성 완료"
+        echo "ℹ️ Firestore 사용으로 JSON 파일 생성은 생략됩니다."
       
     - name: Build application
       run: npm run build
