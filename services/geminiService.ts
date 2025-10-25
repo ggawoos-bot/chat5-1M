@@ -12,6 +12,13 @@ import { FirestoreService, PDFChunk } from './firestoreService';
 
 // API 키 로테이션을 위한 인덱스 (전역 변수 제거)
 
+// PDF.js를 전역으로 선언
+declare global {
+  interface Window {
+    pdfjsLib: any;
+  }
+}
+
 export class GeminiService {
   private static readonly SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
 
@@ -141,20 +148,6 @@ Here is the source material:
 ---START OF SOURCE---
 {sourceText}
 ---END OF SOURCE---`;
-
-// PDF.js를 전역으로 선언
-declare global {
-  interface Window {
-    pdfjsLib: any;
-  }
-}
-
-export class GeminiService {
-  private sources: SourceInfo[] = [];
-  private ai: GoogleGenerativeAI | null = null;
-  private currentChatSession: any = null;
-  private cachedSourceText: string | null = null;
-  private firestoreService: FirestoreService;
 
   /**
    * 문서 유형 판별 함수
