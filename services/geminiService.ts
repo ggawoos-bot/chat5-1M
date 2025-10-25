@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { SourceInfo, Chunk, QuestionAnalysis } from '../types';
 import { pdfCompressionService, CompressionResult } from './pdfCompressionService';
-import { questionAnalyzer, contextSelector } from './questionBasedContextService';
+import { questionAnalyzer, contextSelector, ContextSelector } from './questionBasedContextService';
 import { rpdService } from './rpdService';
 import { log } from './loggingService';
 import { progressiveLoadingService, LoadingProgress } from './progressiveLoadingService';
@@ -1284,6 +1284,11 @@ export class GeminiService {
       this.allChunks = chunks;
       this.isInitialized = true;
       
+      // 🔥 핵심 수정: ContextSelector에 청크 설정
+      console.log('🔍 ContextSelector에 청크 설정 중...');
+      ContextSelector.setChunks(chunks);
+      console.log(`✅ ContextSelector 설정 완료: ${chunks.length}개 청크`);
+      
       // 압축 결과 설정 (압축 없이)
       this.compressionResult = {
         compressedText: fullText,
@@ -1387,7 +1392,16 @@ export class GeminiService {
     }
 
     // 압축된 PDF 내용 사용 (캐시된 내용)
-    const actualSourceText = sourceText || this.cachedSourceText || '';
+    let actualSourceText = sourceText || this.cachedSourceText || '';
+    
+    // 🔥 핵심 수정: 컨텍스트 길이 제한 적용
+    const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
+    if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
+      console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
+      actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
+      console.log(`✅ 컨텍스트 길이 조정: ${actualSourceText.length}자`);
+    }
+    
     const systemInstruction = SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', actualSourceText);
 
     console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
@@ -1517,11 +1531,21 @@ export class GeminiService {
             }
           })();
         } catch (error) {
-          log.error('컨텍스트 기반 응답 생성 실패, 전체 컨텍스트로 폴백', { error: error.message });
+          log.error('컨텍스트 기반 응답 생성 실패, 제한된 컨텍스트로 폴백', { error: error.message });
           
-          // 폴백: 전체 컨텍스트 사용
+          // 🔥 핵심 수정: 폴백 시에도 컨텍스트 길이 제한 적용
+          const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
+          let fallbackContext = this.cachedSourceText || this.fullPdfText || '';
+          
+          if (fallbackContext.length > MAX_CONTEXT_LENGTH) {
+            console.warn(`⚠️ 폴백 컨텍스트 길이 초과: ${fallbackContext.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
+            fallbackContext = fallbackContext.substring(0, MAX_CONTEXT_LENGTH);
+            console.log(`✅ 폴백 컨텍스트 길이 조정: ${fallbackContext.length}자`);
+          }
+          
+          // 폴백: 제한된 컨텍스트 사용
           if (!this.currentChatSession) {
-            await this.createNotebookChatSession();
+            await this.createNotebookChatSession(fallbackContext);
           }
 
           const stream = await this.currentChatSession.sendMessageStream({ message: message });
