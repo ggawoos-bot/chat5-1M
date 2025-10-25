@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "clear-firestore": "node scripts/clear-firestore.js",
     "migrate-firestore": "node --max-old-space-size=4096 --expose-gc scripts/migrate-to-firestore.js",
     "validate-firestore": "node scripts/validate-firestore-data.js",
     "build": "vite build",

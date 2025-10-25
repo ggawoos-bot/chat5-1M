@@ -79,14 +79,49 @@ async function parsePdfFile(pdfPath) {
   }
 }
 
-// 텍스트를 청크로 분할 (메모리 효율적)
-function splitIntoChunks(text, chunkSize = 1000, overlap = 100) {
-  const chunks = [];
-  let start = 0;
+// 개별 청크를 Firestore에 저장
+async function saveChunkToFirestore(documentId, filename, chunk, index, position) {
+  try {
+    const keywords = extractKeywords(chunk);
+    
+    const chunkData = {
+      documentId: documentId,
+      filename: filename,
+      content: chunk,
+      keywords: keywords,
+      metadata: {
+        position: index,
+        startPos: position,
+        endPos: position + chunk.length,
+        originalSize: chunk.length,
+        source: 'Direct PDF Processing'
+      },
+      searchableText: chunk.toLowerCase(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+    
+    await addDoc(collection(db, 'pdf_chunks'), chunkData);
+    return true;
+  } catch (error) {
+    console.error(`❌ 청크 ${index + 1} 저장 실패:`, error.message);
+    return false;
+  }
+}
+
+// 스트리밍 청크 처리 (메모리 최소화)
+async function processChunksStreaming(documentId, filename, text) {
+  const chunkSize = 2000;
+  const overlap = 200;
+  let position = 0;
+  let chunkIndex = 0;
+  let successCount = 0;
   
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length);
-    let chunk = text.slice(start, end);
+  console.log(`📦 스트리밍 청크 처리 시작: ${text.length.toLocaleString()}자`);
+  
+  while (position < text.length) {
+    const end = Math.min(position + chunkSize, text.length);
+    let chunk = text.slice(position, end);
     
     // 문장 경계에서 자르기
     if (end < text.length) {
@@ -94,29 +129,34 @@ function splitIntoChunks(text, chunkSize = 1000, overlap = 100) {
       const lastNewline = chunk.lastIndexOf('\n');
       const cutPoint = Math.max(lastSentenceEnd, lastNewline);
       
-      if (cutPoint > start + chunkSize * 0.5) {
+      if (cutPoint > position + chunkSize * 0.5) {
         chunk = chunk.slice(0, cutPoint + 1);
       }
     }
     
-    chunks.push({
-      content: chunk.trim(),
-      startPos: start,
-      endPos: start + chunk.length,
-      originalSize: chunk.length
-    });
+    // 즉시 Firestore에 저장
+    const success = await saveChunkToFirestore(documentId, filename, chunk.trim(), chunkIndex, position);
     
-    start += chunk.length - overlap;
+    if (success) {
+      successCount++;
+    }
     
-    // 메모리 정리
-    if (chunks.length % 100 === 0) {
-      if (global.gc) {
-        global.gc();
-      }
+    position += chunk.length - overlap;
+    chunkIndex++;
+    
+    // 진행률 표시
+    const progress = ((position / text.length) * 100).toFixed(1);
+    console.log(`  ✓ 청크 ${chunkIndex} 저장 완료 (${progress}%)`);
+    
+    // 메모리 정리 (매 10개마다)
+    if (chunkIndex % 10 === 0 && global.gc) {
+      global.gc();
+      console.log(`  🧹 메모리 정리 완료 (${chunkIndex}개 처리 후)`);
     }
   }
   
-  return chunks;
+  console.log(`✅ 스트리밍 청크 처리 완료: ${successCount}/${chunkIndex}개 성공`);
+  return successCount;
 }
 
 // 키워드 추출 (간단한 버전)
@@ -180,62 +220,7 @@ async function addDocumentToFirestore(filename, pdfData, chunks) {
   }
 }
 
-// 동적 배치 크기 계산 - 항상 1개로 고정
-function calculateDynamicBatchSize() {
-  // 메모리 사용량에 관계없이 항상 1개씩 처리
-  return 1;
-}
-
-// 청크들을 Firestore에 추가 (1개씩 처리)
-async function addChunksToFirestore(documentId, filename, chunks) {
-  try {
-    let addedCount = 0;
-    
-    console.log(`📦 1개씩 처리 시작: ${chunks.length}개 청크`);
-    
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const keywords = extractKeywords(chunk.content);
-      
-      const chunkData = {
-        documentId: documentId,
-        filename: filename,
-        content: chunk.content,
-        keywords: keywords,
-        metadata: {
-          position: i,
-          startPos: chunk.startPos,
-          endPos: chunk.endPos,
-          originalSize: chunk.originalSize,
-          source: 'Direct PDF Processing'
-        },
-        searchableText: chunk.content.toLowerCase(),
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      };
-      
-      // 1개씩 개별 저장
-      await addDoc(collection(db, 'pdf_chunks'), chunkData);
-      addedCount++;
-      
-      // 진행률 표시
-      const progress = (((i + 1) / chunks.length) * 100).toFixed(1);
-      console.log(`  ✓ 청크 ${i + 1}/${chunks.length} 저장 완료 (${progress}%)`);
-      
-      // 메모리 정리 (매 10개마다)
-      if ((i + 1) % 10 === 0 && global.gc) {
-        global.gc();
-        console.log(`  🧹 메모리 정리 완료 (${i + 1}개 처리 후)`);
-      }
-    }
-    
-    console.log(`✅ 청크 추가 완료: ${chunks.length}개`);
-    return chunks.length;
-  } catch (error) {
-    console.error(`❌ 청크 추가 실패: ${filename}`, error);
-    throw error;
-  }
-}
+// 기존 함수들 제거됨 - 스트리밍 처리로 교체
 
 // 스트리밍 PDF 처리 함수
 async function processPdfStreaming(pdfFile, pdfPath, index, totalFiles) {
@@ -249,27 +234,22 @@ async function processPdfStreaming(pdfFile, pdfPath, index, totalFiles) {
     }
     
     // PDF 파싱
-    console.log(`[1/4] PDF 파싱 시도: ${pdfFile}`);
+    console.log(`[1/3] PDF 파싱 시도: ${pdfFile}`);
     const pdfData = await parsePdfFile(pdfPath);
     console.log(`✔ PDF 파싱 성공: ${pdfData.text.length.toLocaleString()}자`);
     
     // Firestore에 문서 추가 (청크 없이)
-    console.log(`[2/4] 문서 메타데이터 저장 중...`);
+    console.log(`[2/3] 문서 메타데이터 저장 중...`);
     const documentId = await addDocumentToFirestore(pdfFile, pdfData, []);
     
     // 스트리밍 청크 처리
-    console.log(`[3/4] 스트리밍 청크 처리 중...`);
-    const chunks = splitIntoChunks(pdfData.text);
-    console.log(`✔ 청크 분할 완료: ${chunks.length}개`);
-    
-    // 청크들을 스트리밍으로 처리
-    const addedChunks = await addChunksToFirestore(documentId, pdfFile, chunks);
+    console.log(`[3/3] 스트리밍 청크 처리 중...`);
+    const addedChunks = await processChunksStreaming(documentId, pdfFile, pdfData.text);
     
     console.log(`[4/4] 메모리 정리 중...`);
     
     // 즉시 메모리 정리
     pdfData.text = null;
-    chunks.length = 0;
     
     if (global.gc) {
       global.gc();
@@ -284,10 +264,10 @@ async function processPdfStreaming(pdfFile, pdfPath, index, totalFiles) {
   }
 }
 
-// 메인 마이그레이션 함수 (1개씩 처리)
+// 메인 마이그레이션 함수 (스트리밍 처리)
 async function migrateToFirestore() {
   try {
-    console.log('🚀 Firestore PDF 1개씩 처리 시작...');
+    console.log('🚀 Firestore PDF 스트리밍 처리 시작...');
     console.log(`💾 초기 메모리 사용량: ${JSON.stringify(getMemoryUsage())}MB`);
     
     // PDF 파일 목록 가져오기
