@@ -4,8 +4,7 @@ on:
   push:
     branches: [ master, main ]
     paths:
-      - 'public/pdf/**'
-      - 'scripts/**'
+      - 'public/pdf/**'  # PDF 파일 변경 시에만 실행
   workflow_dispatch:
     inputs:
       forceReprocess:
