@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/generative-ai';
 import { FirestoreService, PDFChunk } from './firestoreService';
 
 // 타입 정의
@@ -74,7 +74,7 @@ export class QuestionAnalyzer {
     if (availableKeys.length === 0) {
       return null;
     }
-    
+
     const selectedKey = availableKeys[this.currentKeyIndex % availableKeys.length];
     const keyIndex = this.currentKeyIndex;
     this.currentKeyIndex = (this.currentKeyIndex + 1) % availableKeys.length;
@@ -122,36 +122,35 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
   }
 
   /**
-   * 강화된 AI 질문 분석 (같은 모델 재시도)
+   * 강화된 AI 질문 분석 (다중 재시도)
    */
   private async analyzeWithRetry(question: string): Promise<QuestionAnalysis> {
     const apiKeys = this.getApiKeys();
-    const model = 'gemini-2.5-flash';
+    const models = ['gemini-1.5-flash', 'gemini-1.0-pro'];
     
-    for (const apiKey of apiKeys) {
-      try {
-        console.log(`AI 분석 시도: ${model} with ${apiKey.substring(0, 10)}...`);
-        return await this.analyzeWithModel(question, model, apiKey);
-      } catch (error) {
-        console.warn(`AI 분석 실패: ${model} with ${apiKey.substring(0, 10)}...`, error);
-        continue;
+    for (const model of models) {
+      for (const apiKey of apiKeys) {
+        try {
+          console.log(`AI 분석 시도: ${model} with ${apiKey.substring(0, 10)}...`);
+          return await this.analyzeWithModel(question, model, apiKey);
+        } catch (error) {
+          console.warn(`AI 분석 실패: ${model} with ${apiKey.substring(0, 10)}...`, error);
+          continue;
+        }
       }
     }
     
-    throw new Error('모든 API 키로 분석에 실패했습니다.');
+    throw new Error('모든 AI 모델과 API 키로 분석에 실패했습니다.');
   }
 
   /**
    * 특정 모델과 API 키로 분석
    */
   private async analyzeWithModel(question: string, model: string, apiKey: string): Promise<QuestionAnalysis> {
-    const ai = new GoogleGenerativeAI(apiKey);
-    const aiModel = ai.getGenerativeModel({ 
-      model: model,
-      systemInstruction: 'You are an expert assistant for analyzing Korean questions about smoking cessation policies and regulations.'
-    });
+    const ai = new GoogleGenAI({ apiKey });
+    const aiModel = ai.getGenerativeModel({ model });
 
-      const analysisPrompt = `
+    const analysisPrompt = `
 다음 질문을 분석하여 JSON 형태로 답변해주세요:
 
 질문: "${question}"
@@ -174,9 +173,9 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 `;
 
     const result = await aiModel.generateContent(analysisPrompt);
-      const response = await result.response;
-      const text = response.text();
-      
+    const response = await result.response;
+    const text = response.text();
+    
     return this.parseAnalysisResponse(text);
   }
 
@@ -187,22 +186,22 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
     try {
       // JSON 파싱 시도
       const analysis = JSON.parse(responseText);
-        return {
+      return {
         intent: analysis.intent || '일반 문의',
-          keywords: analysis.keywords || [],
+        keywords: analysis.keywords || [],
         category: (analysis.category as QuestionAnalysis['category']) || 'general',
         complexity: (analysis.complexity as QuestionAnalysis['complexity']) || 'simple',
-          entities: analysis.entities || [],
-          context: analysis.context || ''
-        };
+        entities: analysis.entities || [],
+        context: analysis.context || ''
+      };
     } catch (error) {
       console.error('❌ AI 응답 파싱 실패:', error);
       throw new Error('AI 응답을 파싱할 수 없습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
-    }
   }
+}
 
-  /**
+/**
  * 컨텍스트 선택기 (Firestore 우선)
  */
 export class ContextSelector {
@@ -294,18 +293,18 @@ export class ContextSelector {
         id: chunk.id || `firestore-${Math.random()}`,
         content: chunk.content,
         metadata: {
-           source: 'Firestore',
-           title: 'Unknown',
+          source: chunk.metadata?.source || 'Firestore',
+          title: chunk.metadata?.title || 'Unknown',
           page: chunk.metadata?.page || 1,
           section: chunk.metadata?.section || 'Unknown',
           position: chunk.metadata?.position || 0,
-           startPosition: chunk.metadata?.startPos || 0,
-           endPosition: chunk.metadata?.endPos || 0,
+          startPosition: chunk.metadata?.startPosition || 0,
+          endPosition: chunk.metadata?.endPosition || 0,
           originalSize: chunk.metadata?.originalSize || 0
         },
         keywords: chunk.keywords || [],
         location: {
-          document: 'Unknown',
+          document: chunk.metadata?.source || 'Unknown',
           section: chunk.metadata?.section || 'Unknown',
           page: chunk.metadata?.page || 1
         }
@@ -332,18 +331,18 @@ export class ContextSelector {
             id: chunk.id || `firestore-text-${Math.random()}`,
             content: chunk.content,
             metadata: {
-           source: 'Firestore',
-           title: 'Unknown',
+              source: chunk.metadata?.source || 'Firestore',
+              title: chunk.metadata?.title || 'Unknown',
               page: chunk.metadata?.page || 1,
               section: chunk.metadata?.section || 'Unknown',
               position: chunk.metadata?.position || 0,
-           startPosition: chunk.metadata?.startPos || 0,
-           endPosition: chunk.metadata?.endPos || 0,
+              startPosition: chunk.metadata?.startPosition || 0,
+              endPosition: chunk.metadata?.endPosition || 0,
               originalSize: chunk.metadata?.originalSize || 0
             },
             keywords: chunk.keywords || [],
             location: {
-              document: 'Unknown',
+              document: chunk.metadata?.source || 'Unknown',
               section: chunk.metadata?.section || 'Unknown',
               page: chunk.metadata?.page || 1
             }

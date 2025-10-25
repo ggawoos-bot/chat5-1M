@@ -954,7 +954,7 @@ export class GeminiService {
     contextSelector.setChunks(this.allChunks);
     console.log(`PDF를 ${this.allChunks.length}개 청크로 분할 완료`);
 
-    // 압축 처리
+    // 압축 처리 (실시간 PDF 파싱은 압축 적용)
     console.log('PDF 내용 압축 중...');
     this.compressionResult = await pdfCompressionService.compressPdfContent(combinedText);
     this.cachedSourceText = this.compressionResult.compressedText;
@@ -1001,7 +1001,7 @@ export class GeminiService {
     // 컨텍스트 선택기에 청크 설정
     contextSelector.setChunks(this.allChunks);
     
-    // PDF 내용 압축 (비동기 처리)
+    // PDF 내용 압축 (실시간 PDF 파싱은 압축 적용)
     console.log('Compressing PDF content...');
     this.compressionResult = await pdfCompressionService.compressPdfContent(fullText);
     this.cachedSourceText = this.compressionResult.compressedText;
@@ -1313,8 +1313,12 @@ export class GeminiService {
       
       const combinedText = texts.join('\n--- END OF DOCUMENT ---\n\n--- START OF DOCUMENT ---\n');
       
-      console.log('Successfully loaded PDF sources');
-      return combinedText;
+      // 실시간 PDF 파싱은 압축 적용 (토큰 제한 관리)
+      console.log('실시간 PDF 파싱 - 압축 적용 중...');
+      const compressionResult = await pdfCompressionService.compressPdfContent(combinedText);
+      
+      console.log(`✅ 실시간 PDF 파싱 완료: ${compressionResult.compressedText.length.toLocaleString()}자 (압축률: ${compressionResult.compressionRatio.toFixed(2)})`);
+      return compressionResult.compressedText;
     } catch (err) {
       console.warn("Error loading PDFs, using default sources:", err);
       // PDF 로딩 실패 시 기본 소스 사용
