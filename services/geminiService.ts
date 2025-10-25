@@ -1242,27 +1242,24 @@ export class GeminiService {
         fullText += `[${doc.filename}]\n${docChunks.map(c => c.content).join('\n\n')}\n\n---\n\n`;
       }
       
-      // 압축된 텍스트 생성
-      const compressedText = await pdfCompressionService.compressText(fullText);
-      
-      // 데이터 설정
-      this.cachedSourceText = compressedText;
+      // Firestore 데이터는 압축 없이 사용 (최적화)
+      this.cachedSourceText = fullText;
       this.fullPdfText = fullText;
       this.allChunks = chunks;
       this.isInitialized = true;
       
-      // 압축 결과 설정
+      // 압축 결과 설정 (압축 없이)
       this.compressionResult = {
-        compressedText: compressedText,
+        compressedText: fullText,
         originalLength: fullText.length,
-        compressedLength: compressedText.length,
-        compressionRatio: fullText.length / compressedText.length,
-        estimatedTokens: Math.ceil(compressedText.length / 4),
-        qualityScore: 95 // Firestore 데이터는 높은 품질
+        compressedLength: fullText.length,
+        compressionRatio: 1.0,
+        estimatedTokens: Math.ceil(fullText.length / 4),
+        qualityScore: 100 // Firestore 데이터는 최고 품질 (압축 없음)
       };
       
-      console.log(`Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${compressedText.length.toLocaleString()}자`);
-      return compressedText;
+      console.log(`Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${fullText.length.toLocaleString()}자 (압축 없음)`);
+      return fullText;
       
     } catch (error) {
       console.error('Firestore 데이터 로드 실패:', error);
