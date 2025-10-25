@@ -1432,7 +1432,6 @@ Here is the source material:
 
       console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
 
-    try {
       // 새로운 AI 인스턴스 생성 (선택된 키로)
       const ai = new GoogleGenerativeAI(selectedApiKey);
       
