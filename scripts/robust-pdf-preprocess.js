@@ -224,13 +224,41 @@ function isCriticalFile(filename) {
  * 문서 유형 판별 함수
  */
 function getDocumentType(filename) {
-  if (filename.includes('국민건강증진법률 시행령 시행규칙')) {
-    return 'legal'; // 법령 문서
+  const lowerFilename = filename.toLowerCase();
+  
+  // 법령 문서 키워드들
+  const legalKeywords = [
+    '국민건강증진법률', '시행령', '시행규칙', '질서위반행위규제법',
+    '법률', '법령', '규칙', '조례', '고시', '공고',
+    '법', '조', '항', '목', '호', '단', '절'
+  ];
+  
+  // 업무지침/매뉴얼 키워드들
+  const guidelineKeywords = [
+    '지침', '매뉴얼', '가이드', '안내', '해설', '해설집',
+    '업무', '관리', '운영', '절차', '방법', '기준',
+    '서비스', '통합', '사업', '지원', '보조제', '이용방법'
+  ];
+  
+  // 법령 문서 판별
+  for (const keyword of legalKeywords) {
+    if (lowerFilename.includes(keyword.toLowerCase())) {
+      console.log(`문서 분류: 법령 문서 (${keyword}) - ${filename}`);
+      return 'legal';
+    }
   }
-  if (filename.includes('질서위반행위규제법')) {
-    return 'legal'; // 법령 문서
+  
+  // 업무지침/매뉴얼 판별
+  for (const keyword of guidelineKeywords) {
+    if (lowerFilename.includes(keyword.toLowerCase())) {
+      console.log(`문서 분류: 업무지침 (${keyword}) - ${filename}`);
+      return 'guideline';
+    }
   }
-  return 'guideline'; // 업무지침, 매뉴얼 등
+  
+  // 기본값: 업무지침으로 분류
+  console.log(`문서 분류: 기본값 (업무지침) - ${filename}`);
+  return 'guideline';
 }
 
 /**
@@ -261,26 +289,55 @@ function extractLegalArticles(text) {
 }
 
 /**
- * 일반 문서용 페이지 번호 추출 (PDF 하단의 실제 페이지 번호)
+ * 개선된 페이지 번호 추출 (PDF 하단의 실제 페이지 번호)
  */
 function extractActualPageNumber(text) {
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   
-  // 마지막 10줄에서 페이지 번호 검색 (PDF 하단)
-  const bottomLines = lines.slice(-10);
+  // 더 넓은 범위에서 페이지 번호 검색 (마지막 20줄)
+  const searchLines = lines.slice(-20);
   
-  for (let i = bottomLines.length - 1; i >= 0; i--) {
-    const line = bottomLines[i];
+  // 다양한 위치에서 페이지 번호 패턴 검색
+  const pagePatterns = [
+    // 기본 패턴들
+    /^(\d+)$/,                           // "15" (단독 숫자)
+    /^페이지\s*(\d+)$/i,                 // "페이지 15"
+    /^(\d+)\s*\/\s*\d+$/i,               // "15/124" (분자만 추출)
+    /^(\d+)\s*of\s*\d+$/i,               // "15 of 124"
+    /^p\.\s*(\d+)$/i,                    // "p.15"
+    /^P\.\s*(\d+)$/i,                    // "P.15"
     
-    // PDF 하단의 페이지 번호 패턴들
-    const pagePatterns = [
-      /^(\d+)$/,                    // "15" (단독 숫자)
-      /^페이지\s*(\d+)$/i,          // "페이지 15"
-      /^(\d+)\s*\/\s*\d+$/i,        // "15/124" (분자만 추출)
-      /^(\d+)\s*of\s*\d+$/i,        // "15 of 124"
-      /^p\.\s*(\d+)$/i,             // "p.15"
-      /^P\.\s*(\d+)$/i              // "P.15"
-    ];
+    // 추가 패턴들
+    /^(\d+)\s*페이지$/i,                 // "15 페이지"
+    /^Page\s*(\d+)$/i,                   // "Page 15"
+    /^(\d+)\s*-\s*\d+$/i,                // "15-16" (첫 번째 숫자)
+    /^(\d+)\s*~?\s*\d+$/i,               // "15~16" 또는 "15 16"
+    /^(\d+)\s*쪽$/i,                     // "15 쪽"
+    /^(\d+)\s*장$/i,                     // "15 장"
+    
+    // 괄호나 특수문자 포함
+    /^\((\d+)\)$/i,                      // "(15)"
+    /^\[(\d+)\]$/i,                      // "[15]"
+    /^(\d+)\s*\)$/i,                     // "15)"
+    /^(\d+)\s*\]$/i,                     // "15]"
+    
+    // 하이픈이나 점 포함
+    /^(\d+)-$/i,                         // "15-"
+    /^(\d+)\.$/i,                        // "15."
+    /^(\d+)\s*\.$/i,                     // "15 ."
+    
+    // 좌우 공백이 있는 경우
+    /^\s*(\d+)\s*$/i,                    // " 15 "
+    
+    // 복합 패턴
+    /^(\d+)\s*\/\s*\d+\s*페이지$/i,      // "15/124 페이지"
+    /^(\d+)\s*of\s*\d+\s*pages$/i,       // "15 of 124 pages"
+    /^(\d+)\s*\/\s*\d+\s*쪽$/i,          // "15/124 쪽"
+  ];
+  
+  // 1. 하단에서 위로 검색 (기존 방식)
+  for (let i = searchLines.length - 1; i >= 0; i--) {
+    const line = searchLines[i];
     
     for (const pattern of pagePatterns) {
       const match = line.match(pattern);
@@ -291,6 +348,38 @@ function extractActualPageNumber(text) {
           return pageNum;
         }
       }
+    }
+  }
+  
+  // 2. 전체 텍스트에서 페이지 번호 패턴 검색 (폴백)
+  const allText = text.replace(/\n/g, ' ');
+  for (const pattern of pagePatterns) {
+    const matches = allText.match(new RegExp(pattern.source, 'gi'));
+    if (matches) {
+      for (const match of matches) {
+        const pageMatch = match.match(pattern);
+        if (pageMatch) {
+          const pageNum = parseInt(pageMatch[1], 10);
+          if (pageNum >= 1 && pageNum <= 999) {
+            console.log(`전체 텍스트에서 페이지 번호 발견: ${pageNum} (매치: "${match}")`);
+            return pageNum;
+          }
+        }
+      }
+    }
+  }
+  
+  // 3. 숫자만 있는 라인들 중에서 가장 가능성 높은 것 선택
+  const numberOnlyLines = searchLines.filter(line => /^\d+$/.test(line));
+  if (numberOnlyLines.length > 0) {
+    const pageNumbers = numberOnlyLines.map(line => parseInt(line, 10))
+      .filter(num => num >= 1 && num <= 999)
+      .sort((a, b) => b - a); // 큰 숫자부터 정렬
+    
+    if (pageNumbers.length > 0) {
+      const selectedPage = pageNumbers[0];
+      console.log(`숫자만 있는 라인에서 페이지 번호 추정: ${selectedPage}`);
+      return selectedPage;
     }
   }
   

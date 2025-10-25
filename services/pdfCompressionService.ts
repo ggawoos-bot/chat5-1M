@@ -875,6 +875,21 @@ export class PDFCompressionService {
       recommendations
     };
   }
+
+  /**
+   * 간단한 텍스트 압축 (Firestore용)
+   */
+  async compressText(text: string): Promise<string> {
+    try {
+      const result = await this.compressPdfContent(text);
+      return result.compressedText;
+    } catch (error) {
+      console.error('텍스트 압축 실패:', error);
+      // 폴백: 원본 텍스트를 최대 길이로 제한
+      const maxLength = 800000; // 80만자 제한
+      return text.length > maxLength ? text.substring(0, maxLength) : text;
+    }
+  }
 }
 
 // 싱글톤 인스턴스
