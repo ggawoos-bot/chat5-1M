@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { FirestoreService, PDFChunk } from './firestoreService';
 import { Chunk, QuestionAnalysis } from '../types';
 
@@ -115,10 +115,13 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
    * 특정 모델과 API 키로 분석
    */
   private async analyzeWithModel(question: string, model: string, apiKey: string): Promise<QuestionAnalysis> {
-    const ai = new GoogleGenerativeAI(apiKey);
-    const aiModel = ai.getGenerativeModel({ 
+    const ai = new GoogleGenAI({ apiKey });
+    const chat = ai.chats.create({
       model: model,
-      systemInstruction: 'You are an expert assistant for analyzing Korean questions about smoking cessation policies and regulations.'
+      config: {
+        systemInstruction: 'You are an expert assistant for analyzing Korean questions about smoking cessation policies and regulations.'
+      },
+      history: [],
     });
 
       const analysisPrompt = `
@@ -160,9 +163,8 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
     console.log(`🔍 AI 모델 호출 시작: ${model}`);
     console.log(`🔍 프롬프트:`, analysisPrompt.substring(0, 200) + '...');
     
-    const result = await aiModel.generateContent(analysisPrompt);
-      const response = await result.response;
-      const text = response.text();
+    const result = await chat.sendMessage({ message: analysisPrompt });
+    const text = result.text;
       
       console.log(`🔍 AI 원본 응답:`, text);
       console.log(`🔍 응답 길이:`, text.length);
@@ -229,7 +231,7 @@ export class ContextSelector {
   private static readonly MIN_CONTEXT_LENGTH = 15000; // 최소 15,000자
   private static readonly MAX_CONTEXT_LENGTH = 50000; // 최대 50,000자
   private static readonly MAX_CHUNK_LENGTH = 5000; // 각 청크 최대 5,000자
-  private static readonly DEFAULT_MAX_CHUNKS = 5; // 기본 최대 청크 수
+  private static readonly DEFAULT_MAX_CHUNKS = 15; // 기본 최대 청크 수 (5개 → 15개로 증가)
   private static readonly MAX_CHUNKS_COMPLEX = 15; // 복잡한 질문 최대 청크 수
 
   /**

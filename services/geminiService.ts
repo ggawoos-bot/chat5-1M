@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { SourceInfo, Chunk, QuestionAnalysis } from '../types';
 import { pdfCompressionService, CompressionResult } from './pdfCompressionService';
 import { questionAnalyzer, contextSelector, ContextSelector } from './questionBasedContextService';
@@ -1421,7 +1421,7 @@ Here is the source material:
       let actualSourceText = sourceText || this.cachedSourceText || '';
       
       // 🔥 핵심 수정: 컨텍스트 길이 제한을 더 엄격하게 적용
-      const MAX_CONTEXT_LENGTH = 5000; // 10,000자 → 5,000자로 축소
+      const MAX_CONTEXT_LENGTH = 10000; // 5,000자 → 10,000자로 증가
       if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
         console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
         actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
@@ -1433,7 +1433,7 @@ Here is the source material:
       console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenerativeAI(selectedApiKey);
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
       
       // chat_index.html과 정확히 동일한 방식
       const chat = ai.chats.create({
@@ -1622,7 +1622,7 @@ Here is the source material:
       console.log(`질문 처리 (출처 포함) - API 키: ${selectedApiKey.substring(0, 10)}...`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenerativeAI(selectedApiKey);
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
       
       // PDF 소스 텍스트 로드
       if (!this.cachedSourceText) {
@@ -1654,14 +1654,16 @@ Here is the source material:
       const systemInstruction = this.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', contextText);
       
       // Gemini API 호출
-      const model = ai.getGenerativeModel({ 
+      const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
-        systemInstruction: systemInstruction
+        config: {
+          systemInstruction: systemInstruction
+        },
+        history: [],
       });
 
-      const result = await model.generateContent(message);
-      const response = await result.response;
-      const text = response.text();
+      const result = await chat.sendMessage({ message: message });
+      const text = result.text;
       
       console.log(`응답 생성 완료 (출처 포함) - 사용된 키: ${selectedApiKey.substring(0, 10)}...`);
       return { content: text, sources: sourceInfo };
@@ -1706,7 +1708,7 @@ Here is the source material:
       console.log(`질문 처리 - API 키: ${selectedApiKey.substring(0, 10)}...`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
-      const ai = new GoogleGenerativeAI(selectedApiKey);
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
       
       // PDF 소스 텍스트 로드
       if (!this.cachedSourceText) {
@@ -1721,14 +1723,16 @@ Here is the source material:
       const systemInstruction = this.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', this.cachedSourceText);
       
       // Gemini API 호출
-      const model = ai.getGenerativeModel({ 
+      const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
-        systemInstruction: systemInstruction
+        config: {
+          systemInstruction: systemInstruction
+        },
+        history: [],
       });
 
-      const result = await model.generateContent(message);
-      const response = await result.response;
-      const text = response.text();
+      const result = await chat.sendMessage({ message: message });
+      const text = result.text;
       
       console.log(`응답 생성 완료 - 사용된 키: ${selectedApiKey.substring(0, 10)}...`);
       return text;

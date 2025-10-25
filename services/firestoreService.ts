@@ -72,7 +72,7 @@ export class FirestoreService {
   async searchChunksByKeywords(
     keywords: string[], 
     documentId?: string, 
-    limitCount: number = 5
+    limitCount: number = 15 // 5개 → 15개로 증가
   ): Promise<PDFChunk[]> {
     try {
       console.log(`🔍 Firestore 검색 시작: 키워드 ${keywords.length}개, 문서 ${documentId || '전체'}`);
@@ -132,7 +132,7 @@ export class FirestoreService {
   async searchChunksByText(
     searchText: string, 
     documentId?: string, 
-    limitCount: number = 3
+    limitCount: number = 10 // 3개 → 10개로 증가
   ): Promise<PDFChunk[]> {
     try {
       console.log(`🔍 Firestore 텍스트 검색: "${searchText}"`);
