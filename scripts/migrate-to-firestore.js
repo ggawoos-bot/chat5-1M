@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, writeBatch, Timestamp, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -79,6 +79,80 @@ async function parsePdfFile(pdfPath) {
   }
 }
 
+// 전체 기존 데이터 삭제 함수 (일괄 삭제)
+async function clearAllExistingData() {
+  try {
+    console.log('🗑️ 전체 기존 데이터 삭제 시작...');
+    const startTime = Date.now();
+    
+    // 1. 모든 청크 삭제
+    console.log('📦 모든 청크 삭제 중...');
+    const allChunksQuery = query(collection(db, 'pdf_chunks'));
+    const allChunksSnapshot = await getDocs(allChunksQuery);
+    
+    if (allChunksSnapshot.empty) {
+      console.log('  ✓ 기존 청크 없음');
+    } else {
+      console.log(`  📦 기존 청크 삭제 중: ${allChunksSnapshot.docs.length}개`);
+      
+      // WriteBatch로 일괄 삭제 (500개씩)
+      const batchSize = 500;
+      const chunks = allChunksSnapshot.docs;
+      let deletedChunks = 0;
+      
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const batchChunks = chunks.slice(i, i + batchSize);
+        
+        batchChunks.forEach(chunkDoc => {
+          batch.delete(chunkDoc.ref);
+        });
+        
+        await batch.commit();
+        deletedChunks += batchChunks.length;
+        
+        const progress = ((deletedChunks / chunks.length) * 100).toFixed(1);
+        console.log(`  ✓ 청크 삭제 완료: ${deletedChunks}/${chunks.length}개 (${progress}%)`);
+        
+        // 메모리 정리 (매 1000개마다)
+        if (deletedChunks % 1000 === 0 && global.gc) {
+          global.gc();
+        }
+      }
+      
+      console.log(`  ✅ 청크 삭제 완료: ${deletedChunks}개`);
+    }
+    
+    // 2. 모든 문서 삭제
+    console.log('📄 모든 문서 삭제 중...');
+    const allDocsQuery = query(collection(db, 'pdf_documents'));
+    const allDocsSnapshot = await getDocs(allDocsQuery);
+    
+    if (allDocsSnapshot.empty) {
+      console.log('  ✓ 기존 문서 없음');
+    } else {
+      console.log(`  📄 기존 문서 삭제 중: ${allDocsSnapshot.docs.length}개`);
+      
+      const batch = writeBatch(db);
+      allDocsSnapshot.docs.forEach(docSnapshot => {
+        batch.delete(docSnapshot.ref);
+      });
+      
+      await batch.commit();
+      console.log(`  ✅ 문서 삭제 완료: ${allDocsSnapshot.docs.length}개`);
+    }
+    
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ 전체 데이터 삭제 완료 (${duration}초)`);
+    return true;
+  } catch (error) {
+    console.error('❌ 전체 데이터 삭제 실패:', error);
+    return false;
+  }
+}
+
+
 // 개별 청크를 Firestore에 저장
 async function saveChunkToFirestore(documentId, filename, chunk, index, position) {
   try {
@@ -109,54 +183,135 @@ async function saveChunkToFirestore(documentId, filename, chunk, index, position
   }
 }
 
-// 스트리밍 청크 처리 (메모리 최소화)
+// 스트리밍 청크 처리 (WriteBatch 최적화) - 수정된 버전
 async function processChunksStreaming(documentId, filename, text) {
   const chunkSize = 2000;
   const overlap = 200;
   let position = 0;
   let chunkIndex = 0;
   let successCount = 0;
+  let lastPosition = -1; // 무한 루프 방지용
+  let stuckCount = 0; // 같은 위치에서 멈춘 횟수
+  
+  // WriteBatch를 위한 청크 데이터 수집
+  const chunkDataList = [];
+  const batchSize = 2; // WriteBatch 크기 (메모리 안정성을 위해 2개)
   
   console.log(`📦 스트리밍 청크 처리 시작: ${text.length.toLocaleString()}자`);
+  console.log(`🔧 배치 크기: ${batchSize}개 (메모리 안정적 모드)`);
+  console.log(`💾 초기 메모리: ${JSON.stringify(getMemoryUsage())}MB`);
   
   while (position < text.length) {
+    // 무한 루프 방지 체크
+    if (position === lastPosition) {
+      stuckCount++;
+      if (stuckCount > 3) {
+        console.error(`❌ 무한 루프 감지! position이 ${position}에서 멈춤. 처리 중단.`);
+        break;
+      }
+    } else {
+      stuckCount = 0;
+      lastPosition = position;
+    }
+    
     const end = Math.min(position + chunkSize, text.length);
     let chunk = text.slice(position, end);
     
-    // 문장 경계에서 자르기
+    // 문장 경계에서 자르기 (개선된 로직)
     if (end < text.length) {
       const lastSentenceEnd = chunk.lastIndexOf('.');
       const lastNewline = chunk.lastIndexOf('\n');
-      const cutPoint = Math.max(lastSentenceEnd, lastNewline);
+      const lastSpace = chunk.lastIndexOf(' ');
       
+      // 더 나은 자르기 지점 찾기
+      let cutPoint = Math.max(lastSentenceEnd, lastNewline, lastSpace);
+      
+      // 최소 50% 이상은 유지
       if (cutPoint > position + chunkSize * 0.5) {
         chunk = chunk.slice(0, cutPoint + 1);
       }
     }
     
-    // 즉시 Firestore에 저장
-    const success = await saveChunkToFirestore(documentId, filename, chunk.trim(), chunkIndex, position);
+    // 청크 데이터 수집
+    const keywords = extractKeywords(chunk.trim());
+    chunkDataList.push({
+      documentId: documentId,
+      filename: filename,
+      content: chunk.trim(),
+      keywords: keywords,
+      metadata: {
+        position: chunkIndex,
+        startPos: position,
+        endPos: position + chunk.length,
+        originalSize: chunk.length,
+        source: 'Direct PDF Processing'
+      },
+      searchableText: chunk.trim().toLowerCase(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
     
-    if (success) {
-      successCount++;
+    // WriteBatch 크기에 도달하면 저장
+    if (chunkDataList.length >= batchSize) {
+      const saved = await saveChunksBatch(chunkDataList);
+      successCount += saved;
+      chunkDataList.length = 0; // 배열 초기화
+      
+      // 메모리 상태 주기적 표시 (매 10개 배치마다)
+      if (successCount % 20 === 0) {
+        console.log(`  💾 현재 메모리: ${JSON.stringify(getMemoryUsage())}MB`);
+      }
     }
     
-    position += chunk.length - overlap;
+    // ✅ 올바른 position 업데이트 로직
+    if (end >= text.length) {
+      // 마지막 청크인 경우 루프 종료
+      position = text.length;
+    } else {
+      // 다음 청크를 위해 오버랩 적용
+      position = end - overlap;
+      if (position < 0) position = 0;
+    }
     chunkIndex++;
     
-    // 진행률 표시
+    // 진행률 표시 (청크 크기도 함께 표시)
     const progress = ((position / text.length) * 100).toFixed(1);
-    console.log(`  ✓ 청크 ${chunkIndex} 저장 완료 (${progress}%)`);
+    console.log(`  ✓ 청크 ${chunkIndex} 처리 완료 (${progress}%) - 크기: ${chunk.length}자`);
     
-    // 메모리 정리 (매 10개마다)
-    if (chunkIndex % 10 === 0 && global.gc) {
+    // 메모리 정리 (매 20개마다 - 2개 배치에 맞춰 조정)
+    if (chunkIndex % 20 === 0 && global.gc) {
       global.gc();
       console.log(`  🧹 메모리 정리 완료 (${chunkIndex}개 처리 후)`);
     }
   }
   
+  // 남은 청크 데이터 저장
+  if (chunkDataList.length > 0) {
+    const saved = await saveChunksBatch(chunkDataList);
+    successCount += saved;
+  }
+  
   console.log(`✅ 스트리밍 청크 처리 완료: ${successCount}/${chunkIndex}개 성공`);
   return successCount;
+}
+
+// WriteBatch로 청크들을 일괄 저장
+async function saveChunksBatch(chunkDataList) {
+  try {
+    const batch = writeBatch(db);
+    
+    chunkDataList.forEach(chunkData => {
+      const docRef = doc(collection(db, 'pdf_chunks'));
+      batch.set(docRef, chunkData);
+    });
+    
+    await batch.commit();
+    console.log(`  📦 청크 배치 저장 완료: ${chunkDataList.length}개 (메모리 안정적)`);
+    return chunkDataList.length;
+  } catch (error) {
+    console.error(`❌ 청크 배치 저장 실패:`, error.message);
+    return 0;
+  }
 }
 
 // 키워드 추출 (간단한 버전)
@@ -269,6 +424,14 @@ async function migrateToFirestore() {
   try {
     console.log('🚀 Firestore PDF 스트리밍 처리 시작...');
     console.log(`💾 초기 메모리 사용량: ${JSON.stringify(getMemoryUsage())}MB`);
+    
+    // 🔥 전체 기존 데이터 일괄 삭제 (한 번만 실행)
+    console.log('🗑️ 전체 기존 데이터 삭제 중...');
+    const clearSuccess = await clearAllExistingData();
+    if (!clearSuccess) {
+      console.error('❌ 데이터 삭제 실패로 인해 처리 중단');
+      return;
+    }
     
     // PDF 파일 목록 가져오기
     const pdfFiles = getPdfFiles();
