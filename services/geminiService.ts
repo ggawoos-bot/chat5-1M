@@ -314,6 +314,8 @@ Here is the source material:
     } finally {
       // 🚨 무한 루프 방지 플래그 리셋
       this.isCreatingSession = false;
+      // ✅ 핵심 수정: 성공했을 때만 sessionCreationCount 리셋
+      this.sessionCreationCount = 0;
       console.log(`🔄 동적 세션 생성 플래그 리셋 완료`);
     }
   }
@@ -1634,6 +1636,8 @@ Here is the source material:
     } finally {
       // 🚨 무한 루프 방지 플래그 리셋
       this.isCreatingSession = false;
+      // ✅ 핵심 수정: 성공했을 때만 sessionCreationCount 리셋
+      this.sessionCreationCount = 0;
       console.log(`🔄 세션 생성 플래그 리셋 완료`);
     }
   }
@@ -2028,6 +2032,8 @@ Here is the source material:
       throw error;
     } finally {
       this.isCreatingSession = false;
+      // ✅ 핵심 수정: 성공했을 때만 sessionCreationCount 리셋
+      this.sessionCreationCount = 0;
     }
   }
 

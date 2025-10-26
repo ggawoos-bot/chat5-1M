@@ -48,19 +48,17 @@ export class ContextQualityOptimizer {
       this.calculateQualityMetrics(chunk, questionAnalysis)
     );
 
-    // 3. 품질 기준 필터링
-    const filteredChunks = enhancedChunks.filter(chunk => 
-      chunk.qualityMetrics.relevanceScore >= this.MIN_RELEVANCE_SCORE &&
-      chunk.qualityMetrics.overallScore >= this.MIN_OVERALL_SCORE
-    );
-
-    // 4. 품질 점수 순 정렬
-    const sortedChunks = filteredChunks.sort((a, b) => 
+    // ✅ 핵심 수정: 품질 기준 필터링 제거, 점수 순으로 정렬하여 상위 N개 선택
+    // 3. 품질 점수 순 정렬
+    const sortedChunks = enhancedChunks.sort((a, b) => 
       b.qualityMetrics.overallScore - a.qualityMetrics.overallScore
     );
 
+    // 4. 상위 maxChunks개만 선택 (필터링 없이)
+    const selectedChunks = sortedChunks.slice(0, maxChunks);
+
     // 5. 컨텍스트 길이 제한 적용
-    const optimizedChunks = this.applyContextLengthLimit(sortedChunks, maxChunks);
+    const optimizedChunks = this.applyContextLengthLimit(selectedChunks, maxChunks);
 
     console.log(`✅ 컨텍스트 품질 최적화 완료: ${optimizedChunks.length}개 청크 선택`);
     console.log(`📊 평균 품질 점수: ${this.calculateAverageScore(optimizedChunks).toFixed(2)}`);
