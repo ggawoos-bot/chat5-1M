@@ -8,6 +8,8 @@ import { pipeline, env } from '@xenova/transformers';
 // Offline 모드 활성화
 env.allowLocalModels = true;
 env.useBrowserCache = true;
+env.allowRemoteModels = false; // 원격 모델 비활성화
+env.useCustomCache = true; // 커스텀 캐시 사용
 
 export class LocalEmbeddingService {
   private static instance: LocalEmbeddingService;

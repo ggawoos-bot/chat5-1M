@@ -58,23 +58,23 @@ export class SemanticSearchEngine {
         // ✅ 로컬 임베딩 사용
         console.log('🔍 로컬 임베딩으로 질문 벡터 생성 시작...');
         
-        // 모델 초기화 확인
         try {
+          // 모델 초기화 확인
           await this.localEmbeddingService.initialize();
+          
+          // 임베딩 생성 시도
+          const embedding = await this.localEmbeddingService.embedText(questionAnalysis.context);
+          questionVector = {
+            text: questionAnalysis.context,
+            vector: embedding,
+            magnitude: Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0))
+          };
+          console.log(`✅ 질문 임베딩 생성 완료: ${embedding.length}차원`);
         } catch (error) {
-          console.warn('⚠️ 로컬 임베딩 모델 초기화 실패, TF-IDF 사용:', error);
+          console.warn('⚠️ 로컬 임베딩 사용 실패, TF-IDF로 대체:', error);
           this.useLocalEmbedding = false;
           questionVector = await this.generateTextEmbedding(questionAnalysis.context);
-          return;
         }
-        
-        const embedding = await this.localEmbeddingService.embedText(questionAnalysis.context);
-        questionVector = {
-          text: questionAnalysis.context,
-          vector: embedding,
-          magnitude: Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0))
-        };
-        console.log(`✅ 질문 임베딩 생성 완료: ${embedding.length}차원`);
       } else {
         // 🔄 TF-IDF 사용 (기존 방식)
         questionVector = await this.generateTextEmbedding(questionAnalysis.context);
