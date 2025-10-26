@@ -49,6 +49,7 @@ export interface Chunk {
 export interface QuestionAnalysis {
   intent: string;
   keywords: string[];
+  expandedKeywords?: string[];
   category: 'definition' | 'procedure' | 'regulation' | 'comparison' | 'analysis' | 'general';
   complexity: 'simple' | 'medium' | 'complex';
   entities: string[];

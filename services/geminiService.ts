@@ -7,6 +7,7 @@ import { log } from './loggingService';
 import { progressiveLoadingService, LoadingProgress } from './progressiveLoadingService';
 import { memoryOptimizationService, MemoryStats } from './memoryOptimizationService';
 import { FirestoreService, PDFChunk } from './firestoreService';
+import { AdvancedSearchQualityService } from './advancedSearchQualityService';
 
 // API 키는 런타임에 동적으로 로딩 (브라우저 로딩 타이밍 문제 해결)
 
@@ -24,6 +25,21 @@ export class GeminiService {
   private isCreatingSession: boolean = false;
   private sessionCreationCount: number = 0;
   private static readonly MAX_SESSION_CREATION_ATTEMPTS = 3;
+  
+  // 고급 검색 품질 향상 서비스
+  private advancedSearchService: AdvancedSearchQualityService;
+  
+  // Firestore 서비스
+  private firestoreService: FirestoreService;
+  
+  // 캐시된 소스 텍스트
+  private cachedSourceText: string | null = null;
+  
+  // 현재 채팅 세션
+  private currentChatSession: any = null;
+  
+  // 소스 정보
+  private sources: SourceInfo[] = [];
   
   private static readonly SYSTEM_INSTRUCTION_TEMPLATE = `You are an expert assistant specialized in Korean legal and administrative documents. Your name is NotebookLM Assistant. 
 
@@ -367,6 +383,7 @@ Here is the source material:
 
   constructor() {
     this.firestoreService = FirestoreService.getInstance();
+    this.advancedSearchService = new AdvancedSearchQualityService();
     this.initializeAI();
     this.initializePerformanceServices();
     // 비동기 로딩은 initializeWithPdfSources에서 처리
@@ -1628,16 +1645,17 @@ Here is the source material:
           const questionAnalysis = await questionAnalyzer.analyzeQuestion(message);
           log.info('질문 분석 완료', { analysis: questionAnalysis });
 
-          // 2. 관련 컨텍스트 선택
-          log.debug('관련 컨텍스트 선택 시작');
-          const relevantChunks = await contextSelector.selectRelevantContext(message, questionAnalysis);
-          log.info(`관련 컨텍스트 선택 완료`, { 
-            selectedChunks: relevantChunks.length,
-            chunks: relevantChunks.map(c => ({ title: c.metadata.title, section: c.location.section }))
+          // 2. 고급 검색 시스템을 사용한 관련 컨텍스트 선택
+          log.debug('고급 검색 시스템 시작');
+          const advancedSearchResult = await this.advancedSearchService.executeAdvancedSearch(questionAnalysis);
+          log.info(`고급 검색 완료`, { 
+            selectedChunks: advancedSearchResult.chunks.length,
+            searchMetrics: advancedSearchResult.searchMetrics,
+            qualityMetrics: advancedSearchResult.qualityMetrics
           });
 
           // 2.5. 청크에서 출처 정보 생성 (문서 유형별 처리)
-          const sourceInfo = this.generateSourceInfoFromChunks(relevantChunks);
+          const sourceInfo = this.generateSourceInfoFromChunks(advancedSearchResult.chunks);
           log.info('출처 정보 생성 완료', { 
             sources: sourceInfo.map(s => ({ 
               title: s.title, 
@@ -1647,12 +1665,17 @@ Here is the source material:
             }))
           });
 
-          // 3. 선택된 컨텍스트로 새 세션 생성 (간소화된 포맷팅)
-          const contextText = relevantChunks
+          // 3. 동적 프롬프트 생성
+          const contextText = advancedSearchResult.chunks
             .map((chunk, index) => {
               return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n${chunk.content}`;
             })
             .join('\n\n---\n\n');
+
+          const dynamicPrompt = this.advancedSearchService.generateDynamicPrompt(
+            questionAnalysis,
+            contextText
+          );
 
           // 컨텍스트 길이 검증 및 제한
           const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
@@ -1662,7 +1685,7 @@ Here is the source material:
             console.warn(`⚠️ 컨텍스트 길이 초과: ${contextText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
             
             // 청크 수를 줄여서 길이 제한
-            let reducedChunks = relevantChunks;
+            let reducedChunks = advancedSearchResult.chunks;
             let reducedContext = contextText;
             
             while (reducedContext.length > MAX_CONTEXT_LENGTH && reducedChunks.length > 1) {
@@ -1680,8 +1703,15 @@ Here is the source material:
 
           log.info(`컨텍스트 기반 세션 생성`, { 
             contextLength: finalContextText.length,
-            selectedChunks: relevantChunks.length
+            selectedChunks: advancedSearchResult.chunks.length
           });
+
+          // 4. 동적 프롬프트를 사용한 세션 생성
+          const chatSession = await this.createNotebookChatSessionWithDynamicPrompt(
+            dynamicPrompt.systemInstruction,
+            finalContextText,
+            dynamicPrompt.userPrompt
+          );
 
           // 4. 질문 분석 결과를 기반으로 동적 시스템 프롬프트 생성
           const dynamicSystemInstruction = this.createDynamicSystemInstruction(questionAnalysis, finalContextText);
@@ -1925,6 +1955,85 @@ Here is the source material:
   // 압축 통계 정보 가져오기
   getCompressionStats(): CompressionResult | null {
     return this.compressionResult;
+  }
+
+  /**
+   * 동적 프롬프트를 사용한 노트북 채팅 세션 생성
+   */
+  private async createNotebookChatSessionWithDynamicPrompt(
+    systemInstruction: string,
+    sourceText: string,
+    userPrompt: string
+  ): Promise<any> {
+    if (this.isCreatingSession) {
+      console.warn('⚠️ 세션 생성 중 - 무한 루프 방지');
+      throw new Error('세션 생성이 이미 진행 중입니다.');
+    }
+
+    if (this.sessionCreationCount >= GeminiService.MAX_SESSION_CREATION_ATTEMPTS) {
+      console.error('❌ 최대 세션 생성 시도 횟수 초과');
+      throw new Error('최대 세션 생성 시도 횟수를 초과했습니다.');
+    }
+
+    this.isCreatingSession = true;
+    this.sessionCreationCount++;
+
+    try {
+      console.log(`🔄 동적 프롬프트 세션 생성 시작 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
+      
+      const selectedApiKey = this.getNextAvailableKey();
+      if (!selectedApiKey) {
+        throw new Error('사용 가능한 API 키가 없습니다.');
+      }
+
+      console.log(`🔑 API 키 선택: ${selectedApiKey.substring(0, 10)}...`);
+
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      
+      // 컨텍스트 길이 제한 적용
+      const MAX_CONTEXT_LENGTH = 10000;
+      const actualSourceText = sourceText.length > MAX_CONTEXT_LENGTH 
+        ? sourceText.substring(0, MAX_CONTEXT_LENGTH) + '...'
+        : sourceText;
+
+      console.log(`📏 소스 텍스트 길이: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
+
+      const chat = ai.chats.create({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: systemInstruction,
+          history: []
+        }
+      });
+
+      console.log('✅ 동적 프롬프트 세션 생성 완료');
+      return chat;
+
+    } catch (error) {
+      console.error('❌ 동적 프롬프트 세션 생성 실패:', error);
+      throw error;
+    } finally {
+      this.isCreatingSession = false;
+    }
+  }
+
+  /**
+   * 답변 검증 실행
+   */
+  async validateAnswer(answer: string, question: string, sources: Chunk[]): Promise<any> {
+    try {
+      const questionAnalysis = await questionAnalyzer.analyzeQuestion(question);
+      return this.advancedSearchService.validateAnswer(answer, question, sources, questionAnalysis);
+    } catch (error) {
+      console.error('❌ 답변 검증 실패:', error);
+      return {
+        isValid: false,
+        metrics: {},
+        issues: [{ type: 'error', severity: 'high', description: '검증 실패', suggestion: '다시 시도해주세요' }],
+        suggestions: ['답변을 다시 확인해주세요'],
+        confidence: 0
+      };
+    }
   }
 
   // PDF 내용 재압축 (필요시)

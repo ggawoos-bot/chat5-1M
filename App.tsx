@@ -4,6 +4,7 @@ import SourceInfo from './components/SourceInfo';
 import CompressionStats from './components/CompressionStats';
 import ConfirmDialog from './components/ConfirmDialog';
 import { FirestoreCacheManager } from './components/FirestoreCacheManager';
+import { AdvancedSearchTest } from './components/AdvancedSearchTest';
 import { geminiService } from './services/geminiService';
 import { SourceInfo as SourceInfoType } from './types';
 
@@ -13,6 +14,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showCompressionStats, setShowCompressionStats] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAdvancedSearchTest, setShowAdvancedSearchTest] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [chatKey, setChatKey] = useState(0); // ChatWindow 리렌더링을 위한 키
 
@@ -144,6 +146,12 @@ function App() {
             
             <div className="flex gap-2">
               <button
+                onClick={() => setShowAdvancedSearchTest(true)}
+                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
+                🧪 고급 검색 테스트
+              </button>
+              <button
                 onClick={() => setShowCompressionStats(true)}
                 className="px-3 py-2 bg-brand-secondary text-brand-text-primary rounded-lg hover:bg-opacity-80 transition-colors text-xs md:text-sm"
               >
@@ -231,6 +239,24 @@ function App() {
 
       {/* Firestore 캐시 관리자 */}
       <FirestoreCacheManager />
+
+      {/* 고급 검색 테스트 모달 */}
+      {showAdvancedSearchTest && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-6xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">🚀 고급 검색 품질 테스트</h2>
+              <button
+                onClick={() => setShowAdvancedSearchTest(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <AdvancedSearchTest />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

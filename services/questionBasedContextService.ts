@@ -1,6 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
 import { FirestoreService, PDFChunk } from './firestoreService';
 import { Chunk, QuestionAnalysis } from '../types';
+import { ContextQualityOptimizer, EnhancedChunk } from './contextQualityOptimizer';
+import { MultiStageSearchSystem } from './multiStageSearchSystem';
+import { SemanticSearchEngine } from './semanticSearchEngine';
+import { AnswerValidationSystem } from './answerValidationSystem';
+import { PromptEngineeringSystem } from './promptEngineeringSystem';
 
 /**
  * 질문 분석기 (AI 기반)
@@ -203,21 +208,21 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
       // 중복 제거
       const uniqueKeywords = [...new Set(allKeywords)];
 
-      return {
+        return {
         intent: analysis.intent || '일반 문의',
         keywords: uniqueKeywords,
         category: (analysis.category as QuestionAnalysis['category']) || 'general',
         complexity: (analysis.complexity as QuestionAnalysis['complexity']) || 'simple',
-        entities: analysis.entities || [],
-        context: analysis.context || ''
-      };
+          entities: analysis.entities || [],
+          context: analysis.context || ''
+        };
     } catch (error) {
       console.error('❌ AI 응답 파싱 실패:', error);
       console.error('❌ 원본 응답:', responseText);
       console.error('❌ 정제된 응답:', responseText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim());
       throw new Error('AI 응답을 파싱할 수 없습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
-  }
+    }
   }
 
   /**
@@ -226,6 +231,8 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 export class ContextSelector {
   private static chunks: Chunk[] = [];
   private static firestoreService: FirestoreService = FirestoreService.getInstance();
+  private static multiStageSearch: MultiStageSearchSystem = new MultiStageSearchSystem();
+  private static semanticSearch: SemanticSearchEngine = new SemanticSearchEngine();
   
   // 동적 컨텍스트 길이 제한 상수
   private static readonly MIN_CONTEXT_LENGTH = 15000; // 최소 15,000자
