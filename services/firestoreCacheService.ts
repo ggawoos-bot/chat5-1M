@@ -186,11 +186,26 @@ export class FirestoreCacheService {
         version: this.CACHE_VERSION
       };
       
-      localStorage.setItem(key, JSON.stringify(data));
+      const dataString = JSON.stringify(data);
+      const sizeInMB = new Blob([dataString]).size / 1024 / 1024;
+      
+      // ✅ 개선: 데이터 크기 확인
+      if (sizeInMB > 5) {
+        console.warn(`⚠️ 캐시 데이터가 큼 (${sizeInMB.toFixed(2)}MB): ${key}`);
+      }
+      
+      // ✅ 개선: 10MB 초과 데이터는 캐시하지 않음
+      if (sizeInMB > 10) {
+        console.warn(`❌ 10MB 초과 데이터는 캐시하지 않음: ${key} (${sizeInMB.toFixed(2)}MB)`);
+        return;
+      }
+      
+      localStorage.setItem(key, dataString);
     } catch (error) {
       console.warn('캐시 저장 실패:', error);
-      // 캐시 공간 부족 시 오래된 캐시 정리
-      this.cleanupOldCache();
+      
+      // ✅ 개선: 공간 확보 시도
+      await this.cleanupSpace();
       
       // 다시 시도
       try {
@@ -235,6 +250,46 @@ export class FirestoreCacheService {
     if (cleanedCount > 0) {
       console.log(`🗑️ 오래된 캐시 ${cleanedCount}개 정리 완료`);
     }
+  }
+
+  /**
+   * 공간 확보를 위한 캐시 정리
+   */
+  private static async cleanupSpace(): Promise<void> {
+    console.log('🗑️ localStorage 공간 확보 시도...');
+    
+    const keys = Object.keys(localStorage);
+    const sizeByKey: Array<{key: string, size: number}> = [];
+    
+    // 모든 캐시 항목의 크기 측정
+    for (const key of keys) {
+      if (key.startsWith(this.CACHE_PREFIX)) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          sizeByKey.push({ key, size: item.length });
+        }
+      }
+    }
+    
+    if (sizeByKey.length === 0) {
+      console.log('ℹ️ 정리할 캐시 항목 없음');
+      return;
+    }
+    
+    // 크기 순으로 정렬 (큰 것부터)
+    sizeByKey.sort((a, b) => b.size - a.size);
+    
+    // 상위 20% 삭제
+    const toDelete = sizeByKey.slice(0, Math.ceil(sizeByKey.length * 0.2));
+    
+    let freedMB = 0;
+    for (const { key, size } of toDelete) {
+      localStorage.removeItem(key);
+      freedMB += size;
+      console.log(`🗑️ 큰 캐시 항목 삭제: ${key} (${(size / 1024 / 1024).toFixed(2)}MB)`);
+    }
+    
+    console.log(`✅ 공간 확보 완료: ${(freedMB / 1024 / 1024).toFixed(2)}MB`);
   }
 
   /**

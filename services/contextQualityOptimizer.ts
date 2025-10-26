@@ -312,15 +312,45 @@ export class ContextQualityOptimizer {
     let totalLength = 0;
     const selectedChunks: EnhancedChunk[] = [];
     
-    for (const chunk of chunks) {
+    // ✅ 개선: 청크가 없으면 빈 배열 반환
+    if (chunks.length === 0) {
+      console.log(`📏 컨텍스트 길이 제한 적용: 0자 (최대: ${this.MAX_CONTEXT_LENGTH}자) - 청크 없음`);
+      return [];
+    }
+    
+    // ✅ 개선: content가 없는 청크는 스킵
+    const validChunks = chunks.filter(chunk => chunk.content && chunk.content.length > 0);
+    
+    if (validChunks.length === 0) {
+      console.log(`⚠️ 컨텍스트 길이 제한 적용: 유효한 청크 없음`);
+      return [];
+    }
+    
+    // ✅ 개선: 길이 제한보다 작은 청크도 허용 (적어도 1개는 반환)
+    for (const chunk of validChunks) {
       if (selectedChunks.length >= maxChunks) break;
-      if (totalLength + chunk.content.length > this.MAX_CONTEXT_LENGTH) break;
+      
+      // ✅ 핵심 수정: 첫 번째 청크는 무조건 포함 (길이와 상관없이)
+      if (selectedChunks.length === 0) {
+        selectedChunks.push(chunk);
+        totalLength += chunk.content.length;
+        continue;
+      }
+      
+      // 나머지 청크는 길이 제한 체크
+      if (totalLength + chunk.content.length > this.MAX_CONTEXT_LENGTH) {
+        // 경고만 로그하고 계속 진행 (최소 1개는 포함됨)
+        if (totalLength > this.MAX_CONTEXT_LENGTH * 0.8) {
+          console.log(`⚠️ 컨텍스트 길이 초과: ${totalLength}자 (최대: ${this.MAX_CONTEXT_LENGTH}자), 더 추가하지 않음`);
+          break;
+        }
+      }
       
       selectedChunks.push(chunk);
       totalLength += chunk.content.length;
     }
     
-    console.log(`📏 컨텍스트 길이 제한 적용: ${totalLength}자 (최대: ${this.MAX_CONTEXT_LENGTH}자)`);
+    console.log(`📏 컨텍스트 길이 제한 적용: ${totalLength}자 (최대: ${this.MAX_CONTEXT_LENGTH}자), ${selectedChunks.length}개 청크`);
     
     return selectedChunks;
   }

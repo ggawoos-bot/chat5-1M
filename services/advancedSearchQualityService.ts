@@ -57,14 +57,17 @@ export class AdvancedSearchQualityService {
    */
   async executeAdvancedSearch(
     questionAnalysis: QuestionAnalysis,
-    maxChunks: number = this.DEFAULT_MAX_CHUNKS
+    maxChunks: number = AdvancedSearchQualityService.DEFAULT_MAX_CHUNKS
   ): Promise<AdvancedSearchResult> {
     const startTime = Date.now();
     console.log(`🚀 고급 검색 시작: "${questionAnalysis.context}"`);
     
+    // ✅ 핵심 수정: maxChunks가 유효하지 않으면 기본값 사용
+    const validMaxChunks = (maxChunks && maxChunks > 0) ? maxChunks : AdvancedSearchQualityService.DEFAULT_MAX_CHUNKS;
+    
     try {
       // 1. 다단계 검색 실행 (50%만 사용)
-      const multiStageTarget = Math.floor(maxChunks * 0.5);
+      const multiStageTarget = Math.floor(validMaxChunks * 0.5);
       const multiStageResult = await this.multiStageSearch.executeMultiStageSearch(
         questionAnalysis,
         multiStageTarget
@@ -74,7 +77,7 @@ export class AdvancedSearchQualityService {
 
       // 2. 의미적 검색(벡터 검색) 항상 실행 - 하이브리드 접근법
       let semanticResults: Chunk[] = [];
-      const remainingChunks = maxChunks - multiStageResult.finalResults.length;
+      const remainingChunks = validMaxChunks - multiStageResult.finalResults.length;
       
       if (remainingChunks > 0) {
         try {
@@ -102,7 +105,7 @@ export class AdvancedSearchQualityService {
       const optimizedResults = ContextQualityOptimizer.optimizeContextQuality(
         uniqueResults,
         questionAnalysis,
-        maxChunks
+        validMaxChunks
       );
 
       // 5. 컨텍스트 길이 제한 적용
