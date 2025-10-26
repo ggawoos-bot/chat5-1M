@@ -1577,8 +1577,8 @@ Here is the source material:
       // 압축된 PDF 내용 사용 (캐시된 내용)
       let actualSourceText = sourceText || this.cachedSourceText || '';
       
-      // 🔥 핵심 수정: 컨텍스트 길이 제한을 더 엄격하게 적용
-      const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
+      // 🔥 핵심 수정: 컨텍스트 길이 제한 (정보 손실 방지)
+      const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한
       if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
         console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
         actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
@@ -1685,27 +1685,60 @@ Here is the source material:
           );
 
           // 컨텍스트 길이 검증 및 제한
-          const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
+          const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (정보 손실 방지)
+          
+          // ✅ 동적 청크 개수 결정
+          const calculateOptimalChunkCount = (
+            chunks: any[], 
+            maxLength: number,
+            currentLength: number
+          ): number => {
+            if (!chunks.length || currentLength <= maxLength) {
+              return chunks.length;
+            }
+            
+            // 평균 청크 길이 계산 (헤더 제외)
+            const avgChunkLength = chunks.reduce((sum, c) => 
+              sum + c.content.length + (c.metadata?.title?.length || 0) + 50, // 메타데이터 포함
+              0
+            ) / chunks.length;
+            
+            // 최적 청크 개수 계산 (여유 공간 20% 포함)
+            const optimalCount = Math.floor(maxLength / (avgChunkLength * 1.2));
+            
+            // 최소 3개, 최대 chunks.length개
+            return Math.max(3, Math.min(optimalCount, chunks.length));
+          };
+          
           let finalContextText = contextText;
           
           if (contextText.length > MAX_CONTEXT_LENGTH) {
             console.warn(`⚠️ 컨텍스트 길이 초과: ${contextText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
             
-            // 청크 수를 줄여서 길이 제한
-            let reducedChunks = advancedSearchResult.chunks;
-            let reducedContext = contextText;
+            // 동적 최적 청크 개수 계산
+            const optimalCount = calculateOptimalChunkCount(
+              advancedSearchResult.chunks,
+              MAX_CONTEXT_LENGTH,
+              contextText.length
+            );
             
-            while (reducedContext.length > MAX_CONTEXT_LENGTH && reducedChunks.length > 1) {
-              reducedChunks = reducedChunks.slice(0, -1);
-              reducedContext = reducedChunks
-                .map((chunk, index) => {
-                  return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n${chunk.content}`;
-                })
-                .join('\n\n---\n\n');
-            }
+            console.log(`📊 동적 청크 개수 결정: ${optimalCount}개 (전체: ${advancedSearchResult.chunks.length}개)`);
             
-            finalContextText = reducedContext;
-            console.log(`✅ 컨텍스트 길이 조정: ${finalContextText.length}자 (${reducedChunks.length}개 청크)`);
+            // 관련성 점수 순으로 정렬하여 상위 청크만 선택
+            const sortedByRelevance = [...advancedSearchResult.chunks].sort((a, b) => 
+              (b.qualityMetrics?.overallScore || 0) - (a.qualityMetrics?.overallScore || 0)
+            );
+            
+            const selectedChunks = sortedByRelevance.slice(0, optimalCount);
+            
+            // 선택된 청크로 컨텍스트 재구성
+            finalContextText = selectedChunks
+              .map((chunk, index) => {
+                return `[문서 ${index + 1}: ${chunk.metadata.title} - ${chunk.location.section || '일반'}]\n${chunk.content}`;
+              })
+              .join('\n\n---\n\n');
+            
+            console.log(`✅ 컨텍스트 길이 조정: ${finalContextText.length}자 (${selectedChunks.length}개 청크)`);
           }
 
           log.info(`컨텍스트 기반 세션 생성`, { 
@@ -1740,7 +1773,7 @@ Here is the source material:
           log.error('컨텍스트 기반 응답 생성 실패, 제한된 컨텍스트로 폴백', { error: error.message });
           
           // 🔥 핵심 수정: 폴백 시에도 컨텍스트 길이 제한 적용
-          const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
+          const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (정보 손실 방지)
           let fallbackContext = this.cachedSourceText || this.fullPdfText || '';
           
           // 폴백 시에도 선택적 컨텍스트 사용 (전체 텍스트 대신)
@@ -2009,7 +2042,7 @@ Here is the source material:
       const ai = new GoogleGenAI({ apiKey: selectedApiKey });
       
       // 컨텍스트 길이 제한 적용
-      const MAX_CONTEXT_LENGTH = 10000;
+      const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (일관성 유지)
       const actualSourceText = sourceText.length > MAX_CONTEXT_LENGTH 
         ? sourceText.substring(0, MAX_CONTEXT_LENGTH) + '...'
         : sourceText;
