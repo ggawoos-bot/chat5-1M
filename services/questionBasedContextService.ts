@@ -1,6 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 import { FirestoreService, PDFChunk } from './firestoreService';
 import { Chunk, QuestionAnalysis } from '../types';
+import { UnifiedSynonymService } from './unifiedSynonymService';
+import { ComprehensiveSynonymExpansion } from './comprehensiveSynonymExpansion';
 import { ContextQualityOptimizer, EnhancedChunk } from './contextQualityOptimizer';
 import { MultiStageSearchSystem } from './multiStageSearchSystem';
 import { SemanticSearchEngine } from './semanticSearchEngine';
@@ -231,6 +233,8 @@ AI 질문 분석 서비스를 사용할 수 없습니다.
 export class ContextSelector {
   private static chunks: Chunk[] = [];
   private static firestoreService: FirestoreService = FirestoreService.getInstance();
+  private static unifiedSynonymService: UnifiedSynonymService = UnifiedSynonymService.getInstance();
+  private static comprehensiveSynonymExpansion: ComprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
   private static multiStageSearch: MultiStageSearchSystem = new MultiStageSearchSystem();
   private static semanticSearch: SemanticSearchEngine = new SemanticSearchEngine();
   
@@ -813,31 +817,21 @@ export class ContextSelector {
   }
 
   /**
-   * 확장된 동의어 목록 생성
+   * 확장된 동의어 목록 생성 (통합 서비스 사용)
    */
   private static getExpandedSynonyms(keywords: string[]): string[] {
-    const synonymMap: { [key: string]: string[] } = {
-      '금연': ['흡연금지', '담배금지', '니코틴금지', '흡연제한', '금연구역'],
-      '공동주택': ['아파트', '연립주택', '다세대주택', '주택단지', '아파트단지'],
-      '어린이집': ['보육시설', '유치원', '어린이보호시설', '보육원'],
-      '학교': ['교육시설', '학원', '교실', '강의실'],
-      '병원': ['의료시설', '클리닉', '의원', '보건소'],
-      '법령': ['법규', '규정', '조항', '법률', '시행령', '시행규칙'],
-      '위반': ['위배', '위법', '불법', '금지행위', '규정위반'],
-      '벌금': ['과태료', '처벌', '제재', '벌칙', '과징금'],
-      '신고': ['제보', '고발', '신청', '접수', '제출'],
-      '관리': ['운영', '관할', '담당', '처리', '시행']
-    };
+    // 통합 동의어 서비스에서 확장
+    const basicExpanded = this.unifiedSynonymService.expandKeywords(keywords);
     
-    const synonyms: string[] = [];
+    // 포괄적 동의어 확장 서비스에서 추가 확장
+    const comprehensiveExpanded: string[] = [];
     keywords.forEach(keyword => {
-      synonyms.push(keyword);
-      if (synonymMap[keyword]) {
-        synonyms.push(...synonymMap[keyword]);
-      }
+      comprehensiveExpanded.push(...this.comprehensiveSynonymExpansion.expandKeyword(keyword));
     });
     
-    return [...new Set(synonyms)]; // 중복 제거
+    // 모든 결과 통합 및 중복 제거
+    const allExpanded = [...basicExpanded, ...comprehensiveExpanded];
+    return [...new Set(allExpanded)]; // 중복 제거
   }
 
   /**

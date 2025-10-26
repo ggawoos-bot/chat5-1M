@@ -5,6 +5,8 @@
 
 import { Chunk, QuestionAnalysis } from '../types';
 import { FirestoreService, PDFChunk } from './firestoreService';
+import { UnifiedSynonymService } from './unifiedSynonymService';
+import { ComprehensiveSynonymExpansion } from './comprehensiveSynonymExpansion';
 
 export interface SemanticSearchResult {
   chunks: Chunk[];
@@ -26,6 +28,8 @@ export interface VectorEmbedding {
 
 export class SemanticSearchEngine {
   private firestoreService: FirestoreService;
+  private unifiedSynonymService: UnifiedSynonymService = UnifiedSynonymService.getInstance();
+  private comprehensiveSynonymExpansion: ComprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
   private static readonly MIN_SIMILARITY_THRESHOLD = 0.3;
   private static readonly MAX_RESULTS = 20;
 

@@ -6,6 +6,8 @@
 import { Chunk, QuestionAnalysis } from '../types';
 import { FirestoreService, PDFChunk } from './firestoreService';
 import { ContextQualityOptimizer, EnhancedChunk } from './contextQualityOptimizer';
+import { UnifiedSynonymService } from './unifiedSynonymService';
+import { ComprehensiveSynonymExpansion } from './comprehensiveSynonymExpansion';
 
 export interface SearchStage {
   name: string;
@@ -29,6 +31,8 @@ export interface MultiStageSearchResult {
 
 export class MultiStageSearchSystem {
   private firestoreService: FirestoreService;
+  private unifiedSynonymService: UnifiedSynonymService = UnifiedSynonymService.getInstance();
+  private comprehensiveSynonymExpansion: ComprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
   private static readonly MAX_RESULTS_PER_STAGE = 15;
   private static readonly MAX_FINAL_RESULTS = 10;
 
@@ -297,28 +301,23 @@ export class MultiStageSearchSystem {
   }
 
   /**
-   * 의미적 키워드 생성
+   * 의미적 키워드 생성 (통합 서비스 사용)
    */
   private generateSemanticKeywords(questionAnalysis: QuestionAnalysis): string[] {
-    const semanticKeywords: string[] = [];
     const keywords = questionAnalysis.keywords;
     
-    // 도메인별 의미적 키워드 매핑
-    const domainMappings: { [key: string]: string[] } = {
-      '체육시설': ['운동시설', '스포츠시설', '체육관', '운동장', '경기장', '헬스장', '수영장'],
-      '어린이집': ['보육시설', '유치원', '어린이보호시설', '보육원', '어린이시설'],
-      '금연구역': ['흡연금지', '담배금지', '니코틴금지', '흡연제한', '금연장소', '금연구역'],
-      '법령': ['규정', '지침', '안내', '법규', '조례', '시행령'],
-      '절차': ['방법', '과정', '단계', '절차', '순서', '방안']
-    };
+    // 통합 동의어 서비스에서 확장
+    const basicExpanded = this.unifiedSynonymService.expandKeywords(keywords);
     
+    // 포괄적 동의어 확장 서비스에서 추가 확장
+    const comprehensiveExpanded: string[] = [];
     keywords.forEach(keyword => {
-      if (domainMappings[keyword]) {
-        semanticKeywords.push(...domainMappings[keyword]);
-      }
+      comprehensiveExpanded.push(...this.comprehensiveSynonymExpansion.expandKeyword(keyword));
     });
     
-    return semanticKeywords;
+    // 모든 결과 통합 및 중복 제거
+    const allExpanded = [...basicExpanded, ...comprehensiveExpanded];
+    return [...new Set(allExpanded)]; // 중복 제거
   }
 
   /**
