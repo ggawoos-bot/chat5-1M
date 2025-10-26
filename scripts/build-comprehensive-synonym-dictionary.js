@@ -6,15 +6,21 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pdfParse from 'pdf-parse';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const pdfParse = require('pdf-parse');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 class AdvancedKeywordExtractor {
   constructor() {
-    this.ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY 환경변수가 설정되지 않았습니다.');
+    }
+    this.ai = new GoogleGenerativeAI(apiKey);
     this.extractedKeywords = new Map();
     this.synonymMappings = new Map();
   }
@@ -717,7 +723,12 @@ class ComprehensiveSynonymDictionaryBuilder {
    * 모든 PDF에서 키워드 추출
    */
   async extractKeywordsFromAllPDFs() {
-    const pdfDir = path.join(__dirname, '../public/pdf');
+    // 먼저 pdf 폴더 시도, 없으면 public/pdf 시도
+    let pdfDir = path.join(__dirname, '../pdf');
+    if (!fs.existsSync(pdfDir) || fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf')).length === 0) {
+      pdfDir = path.join(__dirname, '../public/pdf');
+    }
+    
     const pdfFiles = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf'));
     
     console.log(`📚 ${pdfFiles.length}개 PDF 파일에서 키워드 추출 시작...`);
@@ -839,9 +850,7 @@ class ComprehensiveSynonymDictionaryBuilder {
 }
 
 // 실행
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const builder = new ComprehensiveSynonymDictionaryBuilder();
-  builder.build().catch(console.error);
-}
+const builder = new ComprehensiveSynonymDictionaryBuilder();
+builder.build().catch(console.error);
 
 export default ComprehensiveSynonymDictionaryBuilder;
