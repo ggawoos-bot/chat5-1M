@@ -3,6 +3,7 @@ import ChatWindow from './components/ChatWindow';
 import SourceInfo from './components/SourceInfo';
 import CompressionStats from './components/CompressionStats';
 import ConfirmDialog from './components/ConfirmDialog';
+import { FirestoreCacheManager } from './components/FirestoreCacheManager';
 import { geminiService } from './services/geminiService';
 import { SourceInfo as SourceInfoType } from './types';
 
@@ -227,6 +228,9 @@ function App() {
         onCancel={() => setShowResetConfirm(false)}
         isDestructive={true}
       />
+
+      {/* Firestore 캐시 관리자 */}
+      <FirestoreCacheManager />
     </div>
   );
 }
