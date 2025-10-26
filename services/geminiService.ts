@@ -330,8 +330,7 @@ Here is the source material:
       
       if (docType === 'legal') {
         // 법령 문서: 조항 기반 출처
-        const articles = chunk.metadata?.articles || [];
-        const mainArticle = articles[0] || chunk.location?.section || '일반';
+        const mainArticle = chunk.location?.section || '일반';
         
         const sourceKey = `${filename}-${mainArticle}`;
         if (!sourceMap.has(sourceKey)) {
@@ -347,7 +346,7 @@ Here is the source material:
         }
       } else {
         // 일반 문서: 페이지 번호 기반 출처
-        const pageNumber = chunk.metadata?.pageNumber || chunk.location?.page;
+        const pageNumber = chunk.metadata?.page || chunk.location?.page;
         const section = chunk.location?.section || '일반';
         
         const sourceKey = `${filename}-${pageNumber}-${section}`;
@@ -982,7 +981,7 @@ Here is the source material:
         // 디버깅을 위한 로그
         if (i <= 5 || i % 10 === 0) {
           if (isLegal) {
-            const articles = this.extractLegalArticles(pageText);
+            const articles = this.extractLegalArticles(pageText, filename);
             console.log(`PDF.js 페이지 ${i} → 법령 조항: ${articles.length > 0 ? articles.join(', ') : '없음'}`);
           } else {
             const actualPageNumber = this.extractActualPageNumber(pageText, i);
@@ -1114,7 +1113,7 @@ Here is the source material:
         }
       } catch (error) {
         console.warn(`⚠️ PDF 로딩 실패: ${pdfFile} - ${error.message}`);
-        this.loadingProgress.failedFiles.push({ file: pdfFile, error: error.message });
+        this.loadingProgress.failedFiles.push(`${pdfFile}: ${String(error)}`);
       }
 
       // 예상 남은 시간 계산
@@ -1345,7 +1344,11 @@ Here is the source material:
 
     // 답변 품질 100% 보장
     try {
-      const answer = await this.generateStreamingResponse(question);
+      const answerStream = await this.generateStreamingResponse(question);
+      let answer = '';
+      for await (const chunk of answerStream) {
+        answer += chunk;
+      }
       return {
         answer,
         quality: 'guaranteed',
@@ -1573,7 +1576,7 @@ Here is the source material:
       let actualSourceText = sourceText || this.cachedSourceText || '';
       
       // 🔥 핵심 수정: 컨텍스트 길이 제한을 더 엄격하게 적용
-      const MAX_CONTEXT_LENGTH = 10000; // 5,000자 → 10,000자로 증가
+      const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
       if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
         console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
         actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
@@ -1678,7 +1681,7 @@ Here is the source material:
           );
 
           // 컨텍스트 길이 검증 및 제한
-          const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
+          const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
           let finalContextText = contextText;
           
           if (contextText.length > MAX_CONTEXT_LENGTH) {
@@ -1733,13 +1736,24 @@ Here is the source material:
           log.error('컨텍스트 기반 응답 생성 실패, 제한된 컨텍스트로 폴백', { error: error.message });
           
           // 🔥 핵심 수정: 폴백 시에도 컨텍스트 길이 제한 적용
-          const MAX_CONTEXT_LENGTH = 10000; // 10,000자 제한
+          const MAX_CONTEXT_LENGTH = 5000; // 5,000자 제한 (10,000 → 5,000으로 강화)
           let fallbackContext = this.cachedSourceText || this.fullPdfText || '';
           
+          // 폴백 시에도 선택적 컨텍스트 사용 (전체 텍스트 대신)
           if (fallbackContext.length > MAX_CONTEXT_LENGTH) {
             console.warn(`⚠️ 폴백 컨텍스트 길이 초과: ${fallbackContext.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
-            fallbackContext = fallbackContext.substring(0, MAX_CONTEXT_LENGTH);
-            console.log(`✅ 폴백 컨텍스트 길이 조정: ${fallbackContext.length}자`);
+            
+            // 전체 텍스트 대신 상위 관련 청크만 사용
+            if (this.allChunks && this.allChunks.length > 0) {
+              const topChunks = this.allChunks.slice(0, 3); // 상위 3개 청크만 사용
+              fallbackContext = topChunks.map(chunk => 
+                `[문서: ${chunk.metadata.title}]\n${chunk.content}`
+              ).join('\n\n---\n\n');
+              console.log(`✅ 폴백 컨텍스트를 상위 ${topChunks.length}개 청크로 제한: ${fallbackContext.length}자`);
+            } else {
+              fallbackContext = fallbackContext.substring(0, MAX_CONTEXT_LENGTH);
+              console.log(`✅ 폴백 컨텍스트 길이 조정: ${fallbackContext.length}자`);
+            }
           }
           
           // 폴백: 제한된 컨텍스트 사용
@@ -1819,7 +1833,7 @@ Here is the source material:
         .join('\n\n---\n\n');
 
       // 시스템 지시사항과 소스 텍스트 결합
-      const systemInstruction = this.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', contextText);
+      const systemInstruction = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', contextText);
       
       // Gemini API 호출
       const chat = ai.chats.create({
@@ -1888,7 +1902,7 @@ Here is the source material:
       }
 
       // 시스템 지시사항과 소스 텍스트 결합
-      const systemInstruction = this.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', this.cachedSourceText);
+      const systemInstruction = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', this.cachedSourceText);
       
       // Gemini API 호출
       const chat = ai.chats.create({
@@ -2001,9 +2015,9 @@ Here is the source material:
       const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
-          systemInstruction: systemInstruction,
-          history: []
-        }
+          systemInstruction: systemInstruction
+        },
+        history: []
       });
 
       console.log('✅ 동적 프롬프트 세션 생성 완료');
