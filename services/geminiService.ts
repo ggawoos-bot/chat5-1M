@@ -41,21 +41,33 @@ IMPORTANT INSTRUCTIONS:
 7. If multiple documents contain related information, synthesize them coherently
 8. Pay special attention to procedural steps, definitions, and regulatory requirements
 9. Use formal Korean language appropriate for official documents
-10. When presenting structured data (lists, comparisons, procedures, criteria), ALWAYS use Markdown tables for better readability
+10. **FLEXIBLE ANSWER FORMATTING**: Adapt your response format based on the question type and content:
+    - **For historical/chronological data**: Use tables with years when showing regulatory changes over time
+    - **For simple definitions**: Use concise text format without tables
+    - **For procedures**: Use numbered lists or step-by-step format
+    - **For comparisons**: Use tables when comparing multiple items
+    - **For complex regulations**: Use tables when presenting structured data
 11. Use Markdown formatting for better presentation (bold, lists, tables, headings, etc.)
 12. For tabular data, use proper Markdown table syntax with headers and aligned columns
-13. IMPORTANT: When asked to create a table or present data in table format, use this exact Markdown table syntax:
+13. IMPORTANT: When creating tables, use this exact Markdown table syntax:
     | Column 1 | Column 2 | Column 3 |
     |----------|----------|----------|
     | Data 1   | Data 2   | Data 3   |
 14. Always include the separator row (---) between header and data rows
+15. **DO NOT force tables for all answers** - only use tables when they genuinely improve readability and understanding
 
-📋 **ANSWER FORMAT REQUIREMENTS:**
+📋 **FLEXIBLE ANSWER FORMAT REQUIREMENTS:**
 - **Step 1**: Quote the COMPLETE relevant article/section in full (with proper formatting)
-- **Step 2**: Provide analysis, interpretation, or additional context if needed
-- **Step 3**: Restrain from personal opinions or judgments - focus on factual information
-- **Step 4**: If multiple articles are relevant, quote ALL of them before analysis
+- **Step 2**: Choose appropriate format based on content type:
+  * **Historical/Chronological data**: Use tables with years (e.g., regulatory changes over time)
+  * **Simple definitions**: Use concise text format
+  * **Procedures**: Use numbered lists or step-by-step format
+  * **Comparisons**: Use tables when comparing multiple items
+  * **Complex regulations**: Use tables for structured data presentation
+- **Step 3**: Provide analysis, interpretation, or additional context if needed
+- **Step 4**: Restrain from personal opinions or judgments - focus on factual information
 - **Step 5**: Use blockquotes (>) for legal text citations to distinguish from analysis
+- **Step 6**: **IMPORTANT**: Only use tables when they genuinely improve readability - do not force tables for simple answers
 
 🆕 SPECIAL FOCUS AREAS:
 - APARTMENT COMPLEXES (공동주택): Pay special attention to questions about apartment complexes, including:
@@ -165,6 +177,129 @@ Here is the source material:
       return 'legal'; // 법령 문서
     }
     return 'guideline'; // 업무지침, 매뉴얼 등
+  }
+
+  /**
+   * 질문 분석 결과를 기반으로 동적 시스템 프롬프트 생성
+   */
+  private createDynamicSystemInstruction(questionAnalysis: QuestionAnalysis, contextText: string): string {
+    const baseTemplate = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE;
+    
+    // 질문 분석 결과에 따른 형식 가이드 추가
+    let formatGuidance = '';
+    
+    switch (questionAnalysis.category) {
+      case 'comparison':
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: This is a comparison question. Use tables when comparing multiple items, regulations, or time periods.';
+        break;
+      case 'analysis':
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: This is an analysis question. Use tables for structured data presentation when appropriate.';
+        break;
+      case 'regulation':
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: This is a regulation question. Use tables for complex regulatory information, but keep simple definitions in text format.';
+        break;
+      case 'procedure':
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: This is a procedure question. Use numbered lists or step-by-step format. Avoid tables unless comparing procedures.';
+        break;
+      case 'definition':
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: This is a definition question. Use concise text format. Avoid tables unless comparing multiple definitions.';
+        break;
+      default:
+        formatGuidance = '\n\n**FORMAT GUIDANCE**: Adapt format based on content complexity. Use tables only when they genuinely improve readability.';
+    }
+    
+    // 복잡도에 따른 추가 가이드
+    if (questionAnalysis.complexity === 'complex') {
+      formatGuidance += '\n**COMPLEXITY**: This is a complex question. Consider using structured formats (tables, lists) for better organization.';
+    } else if (questionAnalysis.complexity === 'simple') {
+      formatGuidance += '\n**COMPLEXITY**: This is a simple question. Prefer concise text format over tables.';
+    }
+    
+    return baseTemplate.replace('{sourceText}', contextText) + formatGuidance;
+  }
+
+  /**
+   * 분석 결과를 포함한 채팅 세션 생성
+   */
+  private async createNotebookChatSessionWithAnalysis(systemInstruction: string): Promise<any> {
+    // 🚨 무한 루프 방지 체크
+    if (this.isCreatingSession) {
+      console.error('❌ 무한 루프 감지: 세션 생성이 이미 진행 중입니다.');
+      throw new Error('세션 생성 중입니다. 무한 루프를 방지합니다.');
+    }
+
+    // 🚨 세션 생성 시도 횟수 체크
+    this.sessionCreationCount++;
+    if (this.sessionCreationCount > GeminiService.MAX_SESSION_CREATION_ATTEMPTS) {
+      console.error(`❌ 세션 생성 시도 횟수 초과: ${this.sessionCreationCount}회 (최대: ${GeminiService.MAX_SESSION_CREATION_ATTEMPTS}회)`);
+      this.sessionCreationCount = 0; // 리셋
+      throw new Error('세션 생성 시도 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+
+    console.log(`🔄 동적 세션 생성 시작 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
+    this.isCreatingSession = true;
+
+    try {
+      // API 키 선택
+      const selectedApiKey = this.getNextAvailableKey();
+      if (!selectedApiKey) {
+        throw new Error('사용 가능한 API 키가 없습니다.');
+      }
+
+      console.log(`Creating dynamic chat session with API key: ${selectedApiKey.substring(0, 10)}...`);
+
+      // 새로운 AI 인스턴스 생성 (선택된 키로)
+      const ai = new GoogleGenAI({ apiKey: selectedApiKey });
+      
+      // chat_index.html과 정확히 동일한 방식
+      const chat = ai.chats.create({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: systemInstruction,
+        },
+        history: [],
+      });
+
+      // RPD 기록 - 안전한 인덱스 계산
+      const apiKeys = this.getApiKeys();
+      
+      // currentKeyIndex가 NaN이거나 유효하지 않은 경우 0으로 초기화
+      if (isNaN(GeminiService.currentKeyIndex) || GeminiService.currentKeyIndex < 0) {
+        GeminiService.currentKeyIndex = 0;
+      }
+      
+      // 선택된 키의 인덱스 계산 (현재 키가 아닌 선택된 키 기준)
+      const selectedKeyIndex = apiKeys.findIndex(key => key === selectedApiKey);
+      const actualKeyIndex = selectedKeyIndex >= 0 ? selectedKeyIndex : 0;
+      console.log(`RPD 기록 - 사용된 키 인덱스: ${actualKeyIndex}/${apiKeys.length}`);
+      
+      console.log(`✅ 동적 세션 생성 완료 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
+      return chat;
+    } catch (error) {
+      console.error('동적 채팅 세션 생성 실패:', error);
+      
+      // API 키 실패 처리
+      if (error instanceof Error && (
+        error.message.includes('429') || 
+        error.message.includes('RESOURCE_EXHAUSTED') ||
+        error.message.includes('quota') ||
+        error.message.includes('Quota') ||
+        error.message.includes('rate limit')
+      )) {
+        console.log('API 키 할당량 초과, 다음 키로 전환');
+        // 재시도 (다른 키로)
+        if (this.sessionCreationCount < GeminiService.MAX_SESSION_CREATION_ATTEMPTS) {
+          this.isCreatingSession = false; // 플래그 리셋
+          return this.createNotebookChatSessionWithAnalysis(systemInstruction);
+        }
+      }
+      
+      throw error;
+    } finally {
+      // 🚨 무한 루프 방지 플래그 리셋
+      this.isCreatingSession = false;
+      console.log(`🔄 동적 세션 생성 플래그 리셋 완료`);
+    }
   }
 
   /**
@@ -1548,8 +1683,11 @@ Here is the source material:
             selectedChunks: relevantChunks.length
           });
 
-          // 4. 새 채팅 세션 생성 (선택된 컨텍스트 사용)
-          const newSession = await this.createNotebookChatSession(finalContextText);
+          // 4. 질문 분석 결과를 기반으로 동적 시스템 프롬프트 생성
+          const dynamicSystemInstruction = this.createDynamicSystemInstruction(questionAnalysis, finalContextText);
+          
+          // 5. 새 채팅 세션 생성 (질문 분석 결과 포함)
+          const newSession = await this.createNotebookChatSessionWithAnalysis(dynamicSystemInstruction);
 
           // 5. 스트리밍 응답 생성
           const stream = await newSession.sendMessageStream({ message: message });
