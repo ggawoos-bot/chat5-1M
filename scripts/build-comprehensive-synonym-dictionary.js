@@ -7,9 +7,26 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, query, getDocs } from 'firebase/firestore';
+
 const require = createRequire(import.meta.url);
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pdfParse = require('pdf-parse');
+
+// Firebase 초기화
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAvdOyBT1Zk9rZ79nP2RvdhpfpIQjGfw8Q",
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-4c3a7.firebaseapp.com",
+  projectId: process.env.FIREBASE_PROJECT_ID || "chat-4c3a7",
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-4c3a7.firebasestorage.app",
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "995636644973",
+  appId: process.env.FIREBASE_APP_ID || "1:995636644973:web:59554144cbaad5d1444364",
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID || "G-9T5TLP4SF1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -720,35 +737,89 @@ class ComprehensiveSynonymDictionaryBuilder {
   }
 
   /**
-   * 모든 PDF에서 키워드 추출
+   * 모든 PDF에서 키워드 추출 (Firestore에서 청크 가져오기)
    */
   async extractKeywordsFromAllPDFs() {
-    // 먼저 pdf 폴더 시도, 없으면 public/pdf 시도
-    let pdfDir = path.join(__dirname, '../pdf');
-    if (!fs.existsSync(pdfDir) || fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf')).length === 0) {
-      pdfDir = path.join(__dirname, '../public/pdf');
+    console.log('📚 Firestore에서 PDF 청크 가져오기 시작...');
+    
+    try {
+      // Firestore에서 모든 청크 가져오기
+      const chunksQuery = query(collection(db, 'pdf_chunks'));
+      const chunksSnapshot = await getDocs(chunksQuery);
+      
+      const allText = [];
+      let processedDocuments = new Set();
+      
+      console.log(`📦 총 ${chunksSnapshot.size}개 청크 발견`);
+      
+      chunksSnapshot.forEach((doc) => {
+        const chunkData = doc.data();
+        
+        // 문서별로 첫 번째 청크만 기록
+        if (!processedDocuments.has(chunkData.filename)) {
+          processedDocuments.add(chunkData.filename);
+          console.log(`📄 문서 발견: ${chunkData.filename}`);
+        }
+        
+        // 청크 텍스트 수집
+        if (chunkData.content) {
+          allText.push(chunkData.content);
+        }
+      });
+      
+      // 모든 텍스트 결합
+      const fullText = allText.join('\n');
+      console.log(`📝 전체 텍스트 길이: ${fullText.length}자`);
+      
+      // 키워드 추출
+      const keywords = await this.extractor.extractMeaningfulKeywords(fullText);
+      keywords.forEach(keyword => this.allKeywords.add(keyword));
+      
+      console.log(`✅ 총 ${this.allKeywords.size}개 고유 키워드 추출 완료`);
+      
+    } catch (error) {
+      console.error('❌ Firestore에서 데이터 가져오기 실패:', error);
+      
+      // 폴백: 로컬 PDF 파일에서 추출 시도
+      console.log('🔄 로컬 PDF 파일에서 추출 시도...');
+      await this.extractFromLocalPDFs();
     }
-    
-    const pdfFiles = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf'));
-    
-    console.log(`📚 ${pdfFiles.length}개 PDF 파일에서 키워드 추출 시작...`);
-    
-    for (const pdfFile of pdfFiles) {
-      try {
-        console.log(`🔍 처리 중: ${pdfFile}`);
-        const pdfPath = path.join(pdfDir, pdfFile);
-        const pdfText = await this.extractTextFromPDF(pdfPath);
-        
-        const keywords = await this.extractor.extractMeaningfulKeywords(pdfText);
-        keywords.forEach(keyword => this.allKeywords.add(keyword));
-        
-        console.log(`✅ ${pdfFile}: ${keywords.length}개 키워드 추출`);
-      } catch (error) {
-        console.error(`❌ ${pdfFile} 처리 실패:`, error);
+  }
+
+  /**
+   * 로컬 PDF 파일에서 키워드 추출 (폴백)
+   */
+  async extractFromLocalPDFs() {
+    try {
+      // 먼저 pdf 폴더 시도, 없으면 public/pdf 시도
+      let pdfDir = path.join(__dirname, '../pdf');
+      if (!fs.existsSync(pdfDir) || fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf')).length === 0) {
+        pdfDir = path.join(__dirname, '../public/pdf');
       }
+      
+      const pdfFiles = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf'));
+      
+      console.log(`📚 로컬 ${pdfFiles.length}개 PDF 파일에서 키워드 추출 시작...`);
+      
+      for (const pdfFile of pdfFiles) {
+        try {
+          console.log(`🔍 처리 중: ${pdfFile}`);
+          const pdfPath = path.join(pdfDir, pdfFile);
+          const pdfText = await this.extractTextFromPDF(pdfPath);
+          
+          const keywords = await this.extractor.extractMeaningfulKeywords(pdfText);
+          keywords.forEach(keyword => this.allKeywords.add(keyword));
+          
+          console.log(`✅ ${pdfFile}: ${keywords.length}개 키워드 추출`);
+        } catch (error) {
+          console.error(`❌ ${pdfFile} 처리 실패:`, error);
+        }
+      }
+      
+      console.log(`🎯 총 ${this.allKeywords.size}개 고유 키워드 추출 완료`);
+    } catch (error) {
+      console.error('❌ 로컬 PDF 처리 실패:', error);
     }
-    
-    console.log(`🎯 총 ${this.allKeywords.size}개 고유 키워드 추출 완료`);
   }
 
   /**

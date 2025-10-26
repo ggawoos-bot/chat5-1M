@@ -8,7 +8,7 @@
     "clear-firestore": "node scripts/clear-firestore.js",
     "migrate-firestore": "node --max-old-space-size=4096 --expose-gc scripts/migrate-to-firestore.js",
     "validate-firestore": "node scripts/validate-firestore-data.js",
-    "build-synonym-dictionary": "node scripts/build-comprehensive-synonym-dictionary.js",
+    "build-synonym-dictionary": "node scripts/extract-keywords-from-firestore.js",
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
