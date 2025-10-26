@@ -192,14 +192,21 @@ export class AdvancedSearchQualityService {
     const limitedChunks: EnhancedChunk[] = [];
 
     for (const chunk of chunks) {
-      if (totalLength + chunk.content.length > this.MAX_CONTEXT_LENGTH) {
+      // ✅ 핵심 수정: chunk.content가 undefined인 경우 대응
+      const chunkLength = chunk.content?.length || 0;
+      
+      if (totalLength + chunkLength > this.MAX_CONTEXT_LENGTH) {
         break;
       }
       limitedChunks.push(chunk);
-      totalLength += chunk.content.length;
+      totalLength += chunkLength;
     }
 
-    console.log(`📏 컨텍스트 길이 제한 적용: ${totalLength.toLocaleString()}자 (최대: ${this.MAX_CONTEXT_LENGTH.toLocaleString()}자)`);
+    // ✅ 안전한 로그 출력
+    const safeTotalLength = totalLength || 0;
+    const safeMaxLength = this.MAX_CONTEXT_LENGTH || 0;
+    
+    console.log(`📏 컨텍스트 길이 제한 적용: ${safeTotalLength.toLocaleString()}자 (최대: ${safeMaxLength.toLocaleString()}자)`);
     
     return limitedChunks;
   }

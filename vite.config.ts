@@ -2,8 +2,42 @@ import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
+import { copyFileSync, mkdirSync, existsSync } from 'fs';
 
 export default defineConfig(({ mode }) => {
+    // data 폴더를 public으로 복사
+    const copyDataToPublic = () => {
+      const dataDir = path.resolve(process.cwd(), 'data');
+      const publicDataDir = path.resolve(process.cwd(), 'public', 'data');
+      
+      try {
+        // public/data 디렉토리가 없으면 생성
+        if (!existsSync(publicDataDir)) {
+          mkdirSync(publicDataDir, { recursive: true });
+        }
+        
+        // data 폴더의 파일들을 public/data로 복사
+        if (existsSync(dataDir)) {
+          const files = fs.readdirSync(dataDir);
+          files.forEach(file => {
+            const srcPath = path.join(dataDir, file);
+            const destPath = path.join(publicDataDir, file);
+            
+            // JSON 파일만 복사
+            if (file.endsWith('.json')) {
+              copyFileSync(srcPath, destPath);
+              console.log(`✅ ${file} 복사 완료: ${destPath}`);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('❌ data 폴더 복사 오류:', error);
+      }
+    };
+    
+    // 즉시 실행
+    copyDataToPublic();
+    
     // .env.local 파일을 직접 읽어보기
     try {
         const envLocalPath = path.resolve(process.cwd(), '.env.local');

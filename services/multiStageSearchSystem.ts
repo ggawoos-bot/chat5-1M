@@ -385,9 +385,10 @@ export class MultiStageSearchSystem {
       },
       keywords: pdfChunk.keywords || [],
       location: {
-        document: pdfChunk.location.document || 'Unknown',
-        section: pdfChunk.location.section || 'general',
-        page: pdfChunk.location.page || 0
+        // ✅ 핵심 수정: pdfChunk.location이 없는 경우 대응
+        document: pdfChunk.location?.document || pdfChunk.documentId || 'Unknown',
+        section: pdfChunk.location?.section || pdfChunk.metadata.section || 'general',
+        page: pdfChunk.location?.page || pdfChunk.metadata.page || 0
       }
     }));
   }
