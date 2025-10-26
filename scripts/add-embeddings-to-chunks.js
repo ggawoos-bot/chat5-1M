@@ -30,11 +30,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Offline 모드 활성화
+// Offline 모드 활성화 (Node.js 환경)
 env.allowLocalModels = true;
-env.useBrowserCache = true;
+// env.useBrowserCache = true; // ❌ Node.js에서는 브라우저 캐시 사용 불가
+env.useCustomCache = false; // Node.js에서는 파일 시스템 캐시 사용
 
-let generateEmbedding: any = null;
+let generateEmbedding = null;
 
 /**
  * 모델 초기화
@@ -60,7 +61,7 @@ async function initializeModel() {
 /**
  * 텍스트 임베딩 생성
  */
-async function embedText(text: string): Promise<number[]> {
+async function embedText(text) {
   if (!generateEmbedding) {
     await initializeModel();
   }
