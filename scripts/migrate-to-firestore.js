@@ -15,6 +15,21 @@ const pdfParse = require('pdf-parse');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ✅ 동의어 사전 로드
+let synonymDictionary = null;
+try {
+  const dictPath = path.join(__dirname, '..', 'data', 'comprehensive-synonym-dictionary.json');
+  if (fs.existsSync(dictPath)) {
+    const dictData = fs.readFileSync(dictPath, 'utf8');
+    synonymDictionary = JSON.parse(dictData);
+    console.log(`✅ 동의어 사전 로드 완료: ${dictData.length}자`);
+  } else {
+    console.log('⚠️ 동의어 사전 파일을 찾을 수 없습니다. 기본 키워드만 사용합니다.');
+  }
+} catch (error) {
+  console.log(`⚠️ 동의어 사전 로드 실패: ${error.message}. 기본 키워드만 사용합니다.`);
+}
+
 // Firebase configuration (환경변수 우선)
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAvdOyBT1Zk9rZ79nP2RvdhpfpIQjGfw8Q",
@@ -66,12 +81,15 @@ function getPdfFiles() {
 async function parsePdfFile(pdfPath) {
   try {
     const dataBuffer = fs.readFileSync(pdfPath);
-    const data = await pdfParse(dataBuffer);
+    // pdf-parse 모듈에서 PDFParse 클래스를 가져와 사용
+    const PDFParse = pdfParse.PDFParse || pdfParse;
+    const instance = new PDFParse({ data: dataBuffer });
+    const data = await instance.getText();
     
     return {
       text: data.text,
-      pages: data.numpages,
-      info: data.info
+      pages: data.total,
+      info: {}
     };
   } catch (error) {
     console.error(`PDF 파싱 실패: ${pdfPath}`, error);
@@ -314,44 +332,80 @@ async function saveChunksBatch(chunkDataList) {
   }
 }
 
-// ✅ 개선: 키워드 추출 (간단한 버전 + 주요 명사 포함)
+// ✅ 개선된 키워드 추출: 동의어 사전 + 기본 키워드
 function extractKeywords(text) {
-  const keywords = [];
+  const keywords = new Set();
   
-  // 금연 관련 키워드
-  const smokingKeywords = ['금연', '담배', '니코틴', '흡연', '금연구역', '건강증진', '필로티', '공동주택'];
-  smokingKeywords.forEach(keyword => {
-    if (text.includes(keyword)) {
-      keywords.push(keyword);
-    }
-  });
-  
-  // 법령 관련 키워드
+  // 기본 키워드 목록 (중요한 키워드)
+  const smokingKeywords = ['금연', '담배', '니코틴', '흡연', '금연구역', '건강증진'];
   const legalKeywords = ['법령', '시행령', '시행규칙', '지침', '가이드라인', '규정', '조항'];
-  legalKeywords.forEach(keyword => {
-    if (text.includes(keyword)) {
-      keywords.push(keyword);
-    }
-  });
-  
-  // ✅ 추가: 주요 시설 및 장소 키워드
   const facilityKeywords = [
     '어린이집', '유치원', '보육시설', '보육원', '보육소',
-    '체육시설', '체육관', '운동장', '헬스장', '수영장', '골프장', '당구장',
-    '필로티', '공동주택', '아파트', '빌라', '연립주택', '다세대주택',
+    '체육시설', '체육관', '운동장', '헬스장', '수영장',
+    '필로티', '공동주택', '아파트', '다세대주택',
     '복도', '계단', '엘리베이터', '지하주차장', '주차장',
-    '학교', '초등학교', '중학교', '고등학교', '대학',
-    '병원', '의원', '약국',
-    '문화시설', '도서관', '박물관', '미술관',
-    '공공장소', '공용공간', '공개공간'
+    '학교', '병원', '문화시설', '도서관',
+    '공공장소', '공용공간'
   ];
-  facilityKeywords.forEach(keyword => {
+  
+  const allKeywords = [...smokingKeywords, ...legalKeywords, ...facilityKeywords];
+  
+  // 1. 기본 키워드 체크
+  allKeywords.forEach(keyword => {
     if (text.includes(keyword)) {
-      keywords.push(keyword);
+      keywords.add(keyword);
     }
   });
   
-  return [...new Set(keywords)]; // 중복 제거
+  // 2. 동의어 사전을 사용하여 키워드 확장
+  if (synonymDictionary && typeof synonymDictionary === 'object') {
+    // "keywords" 배열에서 키워드 추출
+    const dictKeywords = synonymDictionary.keywords || [];
+    
+    if (Array.isArray(dictKeywords)) {
+      // 동의어 사전의 키워드 중 텍스트에 포함된 것들 추가
+      dictKeywords.forEach(dictKeyword => {
+        if (typeof dictKeyword === 'string' && text.includes(dictKeyword)) {
+          keywords.add(dictKeyword);
+        }
+      });
+    }
+    
+    // "synonymMappings" 객체가 있는 경우 역방향 검색
+    if (synonymDictionary.synonymMappings && typeof synonymDictionary.synonymMappings === 'object') {
+      Object.keys(synonymDictionary.synonymMappings).forEach(baseKeyword => {
+        const synonyms = synonymDictionary.synonymMappings[baseKeyword];
+        if (Array.isArray(synonyms)) {
+          const hasAnySynonym = synonyms.some(syn => text.includes(syn));
+          if (hasAnySynonym) {
+            keywords.add(baseKeyword);
+          }
+        }
+      });
+    }
+  }
+  
+  // 3. 긴 텍스트의 경우 추가 키워드 추출 (한글 명사 추출)
+  if (text.length > 500) {
+    // 한글 명사 패턴 (2-4글자)
+    const nounPattern = /[가-힣]{2,4}/g;
+    const matches = text.match(nounPattern);
+    
+    if (matches) {
+      matches.forEach(match => {
+        // 일반적인 단어(보조사, 조사 등) 제외
+        if (
+          match.length >= 2 &&
+          !match.match(/^(은|는|이|가|을|를|의|과|와|에|로|에서)$/) &&
+          !match.match(/^(및|또는|이다|것|등|밖)$/)
+        ) {
+          keywords.add(match);
+        }
+      });
+    }
+  }
+  
+  return Array.from(keywords);
 }
 
 // 문서 타입 분류
