@@ -1,10 +1,38 @@
-# AI 사업문의 지원 Chatbot4 (Enhanced RAG with PDF Compression)
+# AI 사업문의 지원 Chatbot4 (Enhanced RAG with PDF Compression & Dynamic Synonym Dictionary)
 
 ## 특징
-PDF 파일들을 사전 파싱하여(scripts/parse-pdf-with-chunking.js - 청크 크기 10,000자로 변경
-) processed-pdfs.json 파일을 만듭니다. 현재는 24개 청크로 만들어져 있음.
-이 서비스의 경우 
-https://ggawoos-bot.github.io/chat  보다 gemini api 서비스에 text를 넘길 때 텍스트수가 줄어들어, api 를 절감할 수 있음.
+PDF 파일들을 사전 파싱하여 Firestore에 저장하고, PDF 기반 포괄적 동의어 사전을 구축하여 검색 정확도를 향상시킵니다.
+이 서비스는 동적 키워드 확장을 통해 검색 누락을 최소화하고, AI 기반 동의어 생성을 통해 더 정확한 컨텍스트 선택을 제공합니다.
+
+## 🆕 새로운 기능: PDF 기반 동적 동의어 사전
+
+### 포괄적 동의어 사전 구축
+PDF에서 의미있는 키워드를 추출하고 AI 기반 동의어를 생성하여 포괄적인 동의어 사전을 구축합니다.
+
+#### 사용 방법:
+```bash
+# 1. 환경변수 설정
+cp env.example .env
+# .env 파일에 GEMINI_API_KEY 설정
+
+# 2. 포괄적 동의어 사전 구축
+npm run build-synonym-dictionary
+
+# 3. 애플리케이션 빌드 및 실행
+npm run build
+npm run dev
+```
+
+#### 동의어 사전 구축 과정:
+1. **PDF 키워드 추출**: 모든 PDF에서 의미있는 키워드 추출
+2. **AI 기반 동의어 생성**: 각 키워드에 대한 동의어/유사어 생성
+3. **동적 검색 통합**: 기존 검색 시스템에 통합
+
+#### 주요 개선사항:
+- **검색 누락 방지**: PDF 기반 포괄적 키워드 확장
+- **동적 동의어**: AI 기반 실시간 동의어 생성
+- **다층 검색**: 기본 → 통합 → 포괄적 → 동적 동의어 순서로 확장
+- **성능 최적화**: 캐싱 및 배치 처리로 API 효율성 향상
 
 
 

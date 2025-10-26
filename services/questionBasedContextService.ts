@@ -3,6 +3,7 @@ import { FirestoreService, PDFChunk } from './firestoreService';
 import { Chunk, QuestionAnalysis } from '../types';
 import { UnifiedSynonymService } from './unifiedSynonymService';
 import { ComprehensiveSynonymExpansion } from './comprehensiveSynonymExpansion';
+import { DynamicSynonymService } from './dynamicSynonymService';
 import { ContextQualityOptimizer, EnhancedChunk } from './contextQualityOptimizer';
 import { MultiStageSearchSystem } from './multiStageSearchSystem';
 import { SemanticSearchEngine } from './semanticSearchEngine';
@@ -235,6 +236,7 @@ export class ContextSelector {
   private static firestoreService: FirestoreService = FirestoreService.getInstance();
   private static unifiedSynonymService: UnifiedSynonymService = UnifiedSynonymService.getInstance();
   private static comprehensiveSynonymExpansion: ComprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
+  private static dynamicSynonymService: DynamicSynonymService = DynamicSynonymService.getInstance();
   private static multiStageSearch: MultiStageSearchSystem = new MultiStageSearchSystem();
   private static semanticSearch: SemanticSearchEngine = new SemanticSearchEngine();
   
@@ -817,20 +819,23 @@ export class ContextSelector {
   }
 
   /**
-   * 확장된 동의어 목록 생성 (통합 서비스 사용)
+   * 확장된 동의어 목록 생성 (동적 동의어 서비스 우선 사용)
    */
   private static getExpandedSynonyms(keywords: string[]): string[] {
-    // 통합 동의어 서비스에서 확장
+    // 1. 동적 동의어 서비스에서 확장 (PDF 기반 포괄적 사전)
+    const dynamicExpanded = this.dynamicSynonymService.expandKeywords(keywords);
+    
+    // 2. 통합 동의어 서비스에서 추가 확장 (폴백)
     const basicExpanded = this.unifiedSynonymService.expandKeywords(keywords);
     
-    // 포괄적 동의어 확장 서비스에서 추가 확장
+    // 3. 포괄적 동의어 확장 서비스에서 추가 확장
     const comprehensiveExpanded: string[] = [];
     keywords.forEach(keyword => {
       comprehensiveExpanded.push(...this.comprehensiveSynonymExpansion.expandKeyword(keyword));
     });
     
     // 모든 결과 통합 및 중복 제거
-    const allExpanded = [...basicExpanded, ...comprehensiveExpanded];
+    const allExpanded = [...dynamicExpanded, ...basicExpanded, ...comprehensiveExpanded];
     return [...new Set(allExpanded)]; // 중복 제거
   }
 
