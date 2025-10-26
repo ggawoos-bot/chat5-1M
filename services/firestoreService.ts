@@ -26,6 +26,8 @@ export interface PDFChunk {
   documentId: string;
   content: string;
   keywords: string[];
+  embedding?: number[]; // ✅ 추가: 벡터 임베딩
+  embeddingModel?: string; // ✅ 추가: 어떤 모델로 생성했는지
   metadata: {
     page?: number;
     section?: string;
@@ -451,6 +453,93 @@ export class FirestoreService {
       console.error('❌ 하이브리드 검색 오류:', error);
       return [];
     }
+  }
+
+  /**
+   * 벡터 유사도 검색 (새로운 기능)
+   */
+  async similaritySearch(
+    queryEmbedding: number[], 
+    documentId?: string, 
+    limitCount: number = 10
+  ): Promise<PDFChunk[]> {
+    try {
+      console.log('🔍 벡터 유사도 검색 시작');
+      
+      // 모든 청크 가져오기
+      const q = query(collection(db, this.chunksCollection));
+      const snapshot = await getDocs(q);
+      
+      const chunksWithSimilarity: Array<PDFChunk & { similarity: number }> = [];
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data() as PDFChunk;
+        
+        // 문서 필터링
+        if (documentId && data.documentId !== documentId) {
+          return;
+        }
+        
+        // 임베딩이 있는 청크만 처리
+        if (data.embedding && data.embedding.length > 0) {
+          const similarity = this.cosineSimilarity(queryEmbedding, data.embedding);
+          
+          chunksWithSimilarity.push({
+            id: doc.id,
+            ...data,
+            similarity
+          });
+        }
+      });
+      
+      // 유사도 순으로 정렬
+      chunksWithSimilarity.sort((a, b) => b.similarity - a.similarity);
+      
+      const results = chunksWithSimilarity
+        .slice(0, limitCount)
+        .map(({ similarity, ...chunk }) => chunk);
+      
+      console.log(`✅ 벡터 검색 완료: ${results.length}개 결과`);
+      console.log(`📊 평균 유사도: ${this.calculateAverageSimilarity(chunksWithSimilarity.slice(0, limitCount))}`);
+      
+      return results;
+      
+    } catch (error) {
+      console.error('❌ 벡터 검색 오류:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 코사인 유사도 계산
+   */
+  private cosineSimilarity(vec1: number[], vec2: number[]): number {
+    if (vec1.length !== vec2.length) return 0;
+    
+    let dotProduct = 0;
+    let mag1 = 0;
+    let mag2 = 0;
+    
+    for (let i = 0; i < vec1.length; i++) {
+      dotProduct += vec1[i] * vec2[i];
+      mag1 += vec1[i] * vec1[i];
+      mag2 += vec2[i] * vec2[i];
+    }
+    
+    mag1 = Math.sqrt(mag1);
+    mag2 = Math.sqrt(mag2);
+    
+    if (mag1 === 0 || mag2 === 0) return 0;
+    return dotProduct / (mag1 * mag2);
+  }
+
+  /**
+   * 평균 유사도 계산
+   */
+  private calculateAverageSimilarity(chunks: Array<{ similarity: number }>): number {
+    if (chunks.length === 0) return 0;
+    const sum = chunks.reduce((acc, chunk) => acc + chunk.similarity, 0);
+    return sum / chunks.length;
   }
 
   /**

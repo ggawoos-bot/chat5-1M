@@ -7,6 +7,7 @@ import { Chunk, QuestionAnalysis } from '../types';
 import { FirestoreService, PDFChunk } from './firestoreService';
 import { UnifiedSynonymService } from './unifiedSynonymService';
 import { ComprehensiveSynonymExpansion } from './comprehensiveSynonymExpansion';
+import { LocalEmbeddingService } from './localEmbeddingService';
 
 export interface SemanticSearchResult {
   chunks: Chunk[];
@@ -30,8 +31,10 @@ export class SemanticSearchEngine {
   private firestoreService: FirestoreService;
   private unifiedSynonymService: UnifiedSynonymService = UnifiedSynonymService.getInstance();
   private comprehensiveSynonymExpansion: ComprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
+  private localEmbeddingService: LocalEmbeddingService = LocalEmbeddingService.getInstance();
   private static readonly MIN_SIMILARITY_THRESHOLD = 0.3;
   private static readonly MAX_RESULTS = 20;
+  private useLocalEmbedding: boolean = true; // ✅ 로컬 임베딩 사용 여부
 
   constructor() {
     this.firestoreService = FirestoreService.getInstance();
@@ -48,34 +51,78 @@ export class SemanticSearchEngine {
     console.log(`🔍 의미적 검색 시작: "${questionAnalysis.context}"`);
     
     try {
-      // 1. 질문 벡터 생성
-      const questionVector = await this.generateTextEmbedding(questionAnalysis.context);
+      // 1. 질문 벡터 생성 (로컬 임베딩 또는 TF-IDF)
+      let questionVector: VectorEmbedding;
       
-      // 2. 모든 청크 가져오기
-      const allChunks = await this.getAllChunks();
-      console.log(`📊 처리할 청크 수: ${allChunks.length}개`);
+      if (this.useLocalEmbedding) {
+        // ✅ 로컬 임베딩 사용
+        console.log('🔍 로컬 임베딩으로 질문 벡터 생성');
+        const embedding = await this.localEmbeddingService.embedText(questionAnalysis.context);
+        questionVector = {
+          text: questionAnalysis.context,
+          vector: embedding,
+          magnitude: Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0))
+        };
+      } else {
+        // 🔄 TF-IDF 사용 (기존 방식)
+        questionVector = await this.generateTextEmbedding(questionAnalysis.context);
+      }
       
-      // 3. 청크별 의미적 유사도 계산
-      const similarities = await this.calculateSemanticSimilarities(
-        questionVector,
-        allChunks
-      );
+      // 2. Firestore에서 벡터 유사도 검색 (임베딩이 있는 경우)
+      let chunks: Chunk[] = [];
       
-      // 4. 유사도 기준 필터링 및 정렬
-      const filteredResults = this.filterAndSortBySimilarity(
-        allChunks,
-        similarities,
-        maxResults
-      );
+      if (this.useLocalEmbedding && questionVector.vector) {
+        console.log('🔍 Firestore 벡터 검색 시도');
+        try {
+          const pdfChunks = await this.firestoreService.similaritySearch(
+            questionVector.vector,
+            undefined,
+            maxResults
+          );
+          chunks = this.convertPDFChunksToChunks(pdfChunks);
+          console.log(`✅ Firestore 벡터 검색 결과: ${chunks.length}개`);
+        } catch (error) {
+          console.warn('⚠️ Firestore 벡터 검색 실패, 대체 방법 사용:', error);
+        }
+      }
+      
+      // 3. 벡터 검색 결과가 부족하면 기존 방식 사용
+      if (chunks.length < maxResults) {
+        console.log(`📊 백업 검색: Firestore 결과 ${chunks.length}개 < ${maxResults}개`);
+        
+        const allChunks = await this.getAllChunks();
+        console.log(`📊 처리할 청크 수: ${allChunks.length}개`);
+        
+        // 4. 청크별 의미적 유사도 계산
+        const similarities = await this.calculateSemanticSimilarities(
+          questionVector,
+          allChunks
+        );
+        
+        // 5. 유사도 기준 필터링 및 정렬
+        const additionalResults = this.filterAndSortBySimilarity(
+          allChunks,
+          similarities,
+          maxResults - chunks.length
+        );
+        
+        // 중복 제거
+        const existingIds = new Set(chunks.map(c => c.id));
+        const uniqueAdditional = additionalResults.filter(c => !existingIds.has(c.id));
+        chunks = [...chunks, ...uniqueAdditional];
+      }
       
       const executionTime = Date.now() - startTime;
       
+      // 유사도 점수 추출 (simplified)
+      const similarities = chunks.map((_, index) => 1 - (index / chunks.length) * 0.3);
+      
       const result: SemanticSearchResult = {
-        chunks: filteredResults.chunks,
-        similarities: filteredResults.similarities,
+        chunks,
+        similarities,
         searchMetrics: {
-          totalProcessed: allChunks.length,
-          averageSimilarity: this.calculateAverageSimilarity(similarities),
+          totalProcessed: chunks.length,
+          averageSimilarity: this.calculateAverageSimilarity({ map: () => similarities }),
           maxSimilarity: Math.max(...similarities),
           minSimilarity: Math.min(...similarities),
           executionTime
