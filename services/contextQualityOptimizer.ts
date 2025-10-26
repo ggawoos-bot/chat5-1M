@@ -77,8 +77,9 @@ export class ContextQualityOptimizer {
   ): Chunk & { relevanceScore: number } {
     let relevanceScore = 0;
     const content = chunk.content.toLowerCase();
-    const questionKeywords = questionAnalysis.keywords.map(k => k.toLowerCase());
-    const expandedKeywords = questionAnalysis.expandedKeywords.map(k => k.toLowerCase());
+    // ✅ 핵심 수정: undefined 대응
+    const questionKeywords = (questionAnalysis.keywords || []).map(k => k.toLowerCase());
+    const expandedKeywords = (questionAnalysis.expandedKeywords || []).map(k => k.toLowerCase());
 
     // 1. 정확한 키워드 매칭 (가중치: 3)
     questionKeywords.forEach(keyword => {
