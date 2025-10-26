@@ -314,7 +314,7 @@ async function saveChunksBatch(chunkDataList) {
   }
 }
 
-// 키워드 추출 (간단한 버전)
+// ✅ 개선: 키워드 추출 (간단한 버전 + 주요 명사 포함)
 function extractKeywords(text) {
   const keywords = [];
   
@@ -329,6 +329,23 @@ function extractKeywords(text) {
   // 법령 관련 키워드
   const legalKeywords = ['법령', '시행령', '시행규칙', '지침', '가이드라인', '규정', '조항'];
   legalKeywords.forEach(keyword => {
+    if (text.includes(keyword)) {
+      keywords.push(keyword);
+    }
+  });
+  
+  // ✅ 추가: 주요 시설 및 장소 키워드
+  const facilityKeywords = [
+    '어린이집', '유치원', '보육시설', '보육원', '보육소',
+    '체육시설', '체육관', '운동장', '헬스장', '수영장', '골프장', '당구장',
+    '필로티', '공동주택', '아파트', '빌라', '연립주택', '다세대주택',
+    '복도', '계단', '엘리베이터', '지하주차장', '주차장',
+    '학교', '초등학교', '중학교', '고등학교', '대학',
+    '병원', '의원', '약국',
+    '문화시설', '도서관', '박물관', '미술관',
+    '공공장소', '공용공간', '공개공간'
+  ];
+  facilityKeywords.forEach(keyword => {
     if (text.includes(keyword)) {
       keywords.push(keyword);
     }

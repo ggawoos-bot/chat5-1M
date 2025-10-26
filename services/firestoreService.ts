@@ -133,13 +133,22 @@ export class FirestoreService {
         return;
       }
       
-      // 키워드 매칭 확인
-      const hasKeyword = keywords.some(keyword => 
-        data.keywords && data.keywords.some(k => 
-          k.toLowerCase().includes(keyword.toLowerCase()) ||
-          keyword.toLowerCase().includes(k.toLowerCase())
-        )
-      );
+      // ✅ 개선: 키워드 매칭 확인 (keywords 배열 + content 검색)
+      const hasKeyword = keywords.some(keyword => {
+        const keywordLower = keyword.toLowerCase();
+        
+        // 1. keywords 배열에서 검색
+        const inKeywords = data.keywords && data.keywords.some(k => 
+          k.toLowerCase().includes(keywordLower) ||
+          keywordLower.includes(k.toLowerCase())
+        );
+        
+        // 2. content에서도 검색 (내용 기반 검색)
+        const inContent = data.content && 
+          data.content.toLowerCase().includes(keywordLower);
+        
+        return inKeywords || inContent;
+      });
       
       if (hasKeyword) {
         chunks.push({
