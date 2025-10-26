@@ -133,8 +133,8 @@ export class FirestoreService {
         return;
       }
       
-      // ✅ 개선: 키워드 매칭 확인 (keywords 배열 + content 검색)
-      const hasKeyword = keywords.some(keyword => {
+      // ✅ 개선: 다중 키워드 OR 검색 (임계값 완화)
+      const keywordMatches = keywords.filter(keyword => {
         const keywordLower = keyword.toLowerCase();
         
         // 1. keywords 배열에서 검색
@@ -150,10 +150,20 @@ export class FirestoreService {
         return inKeywords || inContent;
       });
       
-      if (hasKeyword) {
+      // ✅ 완화: 1개 이상의 키워드만 매칭되면 포함 (전체 키워드 매칭 불필요)
+      if (keywordMatches.length > 0) {
         chunks.push({
           id: doc.id,
           ...data
+        });
+        
+        // ✅ 디버깅: 매칭된 청크의 keywords와 content 스니펫 로그
+        console.log(`📝 청크 매칭: 키워드 "${keywordMatches.join(', ')}"`, {
+          keywords: data.keywords,
+          contentPreview: data.content?.substring(0, 100),
+          documentId: data.documentId,
+          page: data.metadata?.page,
+          section: data.metadata?.section
         });
       }
     });

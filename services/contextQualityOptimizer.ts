@@ -24,8 +24,9 @@ export interface EnhancedChunk extends Chunk {
 }
 
 export class ContextQualityOptimizer {
-  private static readonly MIN_RELEVANCE_SCORE = 0.7;
-  private static readonly MIN_OVERALL_SCORE = 0.6;
+  // ✅ 완화: 임계값을 낮춰 더 많은 청크 포함
+  private static readonly MIN_RELEVANCE_SCORE = 0.1; // 0.7 → 0.1 (완화)
+  private static readonly MIN_OVERALL_SCORE = 0.1; // 0.6 → 0.1 (완화)
   private static readonly MAX_CONTEXT_LENGTH = 20000;
 
   /**

@@ -44,7 +44,7 @@ export interface AnswerValidationResult {
 export class AdvancedSearchQualityService {
   private multiStageSearch: MultiStageSearchSystem;
   private semanticSearch: SemanticSearchEngine;
-  private static readonly DEFAULT_MAX_CHUNKS = 15;
+  private static readonly DEFAULT_MAX_CHUNKS = 20; // 15 → 20 증가
   private static readonly MAX_CONTEXT_LENGTH = 50000;
 
   constructor() {
@@ -195,8 +195,10 @@ export class AdvancedSearchQualityService {
       // ✅ 핵심 수정: chunk.content가 undefined인 경우 대응
       const chunkLength = chunk.content?.length || 0;
       
+      // ✅ 완화: MAX_CONTEXT_LENGTH를 초과해도 경고만 하고 계속 포함
       if (totalLength + chunkLength > this.MAX_CONTEXT_LENGTH) {
-        break;
+        console.warn(`⚠️ 컨텍스트 길이 초과: ${totalLength + chunkLength}자 (최대: ${this.MAX_CONTEXT_LENGTH}자) - 그러나 계속 포함`);
+        // break 제거: 모든 청크 포함
       }
       limitedChunks.push(chunk);
       totalLength += chunkLength;
@@ -206,7 +208,7 @@ export class AdvancedSearchQualityService {
     const safeTotalLength = totalLength || 0;
     const safeMaxLength = this.MAX_CONTEXT_LENGTH || 0;
     
-    console.log(`📏 컨텍스트 길이 제한 적용: ${safeTotalLength.toLocaleString()}자 (최대: ${safeMaxLength.toLocaleString()}자)`);
+    console.log(`📏 컨텍스트 길이 제한 적용: ${safeTotalLength.toLocaleString()}자 (최대: ${safeMaxLength.toLocaleString()}자) - ${limitedChunks.length}개 청크`);
     
     return limitedChunks;
   }
