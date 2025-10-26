@@ -1023,6 +1023,15 @@ Here is the source material:
       console.log('Firestore 데이터가 없어 실시간 PDF 파싱을 시도합니다...');
       await this.loadPdfSourcesOptimized();
       
+      // ✅ 핵심 수정: 실시간 파싱 후에도 ContextSelector 설정
+      if (this.allChunks && this.allChunks.length > 0) {
+        console.log('🔍 ContextSelector에 청크 설정 중...');
+        ContextSelector.setChunks(this.allChunks);
+        console.log(`✅ ContextSelector 설정 완료: ${this.allChunks.length}개 청크`);
+      } else {
+        console.warn('⚠️ ContextSelector에 설정할 청크가 없습니다.');
+      }
+      
       // 3. 백그라운드 프리로딩으로 답변 품질 100% 보장
       console.log('백그라운드 프리로딩 시작 - 답변 품질 최우선 보장');
       await this.initializeWithBackgroundPreloading();
@@ -1044,6 +1053,42 @@ Here is the source material:
         ? this.sources.map(source => `[${source.title}]\n${source.content}`).join('\n\n')
         : 'PDF 로딩에 실패했습니다. 기본 모드로 실행됩니다.';
       this.isInitialized = true;
+      
+      // ✅ 핵심 수정: 폴백 시에도 ContextSelector 설정
+      if (this.allChunks && this.allChunks.length > 0) {
+        console.log('🔍 ContextSelector에 청크 설정 중...');
+        ContextSelector.setChunks(this.allChunks);
+        console.log(`✅ ContextSelector 설정 완료: ${this.allChunks.length}개 청크`);
+      } else if (this.sources.length > 0) {
+        // 소스에서 청크 생성
+        const fallbackChunks = this.sources.map((source, index) => ({
+          id: `fallback_${index}`,
+          content: source.content,
+          metadata: {
+            source: source.title,
+            title: source.title,
+            page: source.page || 0,
+            section: source.section || 'general',
+            position: index,
+            startPosition: 0,
+            endPosition: source.content.length,
+            originalSize: source.content.length
+          },
+          keywords: [],
+          location: {
+            document: source.title,
+            section: source.section || 'general',
+            page: source.page || 0
+          }
+        }));
+        
+        console.log('🔍 ContextSelector에 폴백 청크 설정 중...');
+        ContextSelector.setChunks(fallbackChunks);
+        this.allChunks = fallbackChunks;
+        console.log(`✅ ContextSelector 설정 완료: ${fallbackChunks.length}개 청크`);
+      } else {
+        console.warn('⚠️ ContextSelector에 설정할 청크가 없습니다.');
+      }
       
       // 기본 압축 결과 생성
       this.compressionResult = {
