@@ -63,27 +63,33 @@ export class AdvancedSearchQualityService {
     console.log(`🚀 고급 검색 시작: "${questionAnalysis.context}"`);
     
     try {
-      // 1. 다단계 검색 실행
+      // 1. 다단계 검색 실행 (50%만 사용)
+      const multiStageTarget = Math.floor(maxChunks * 0.5);
       const multiStageResult = await this.multiStageSearch.executeMultiStageSearch(
         questionAnalysis,
-        maxChunks
+        multiStageTarget
       );
 
-      console.log(`✅ 다단계 검색 완료: ${multiStageResult.finalResults.length}개 결과`);
+      console.log(`✅ 다단계 검색 완료: ${multiStageResult.finalResults.length}개 결과 (목표: ${multiStageTarget})`);
 
-      // 2. 의미적 검색으로 추가 보완 (결과가 부족한 경우)
+      // 2. 의미적 검색(벡터 검색) 항상 실행 - 하이브리드 접근법
       let semanticResults: Chunk[] = [];
-      if (multiStageResult.finalResults.length < maxChunks) {
+      const remainingChunks = maxChunks - multiStageResult.finalResults.length;
+      
+      if (remainingChunks > 0) {
         try {
+          console.log(`🔍 벡터 검색 시작: ${remainingChunks}개 청크 보완 필요`);
           const semanticResult = await this.semanticSearch.executeSemanticSearch(
             questionAnalysis,
-            maxChunks - multiStageResult.finalResults.length
+            remainingChunks
           );
           semanticResults = semanticResult.chunks;
-          console.log(`✅ 의미적 검색 완료: ${semanticResults.length}개 추가 결과`);
+          console.log(`✅ 벡터 검색 완료: ${semanticResults.length}개 추가 결과`);
         } catch (error) {
-          console.warn('⚠️ 의미적 검색 실패:', error);
+          console.warn('⚠️ 벡터 검색 실패:', error);
         }
+      } else {
+        console.log('ℹ️ 추가 벡터 검색 불필요 (다단계 검색 결과 충분)');
       }
 
       // 3. 결과 통합

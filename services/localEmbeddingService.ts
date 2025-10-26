@@ -45,10 +45,16 @@ export class LocalEmbeddingService {
       'Xenova/paraphrase-multilingual-MiniLM-L12-v2', // 다국어 지원 모델
       {
         quantized: true, // 양자화된 모델 사용 (용량 절감)
+        progress_callback: (progress: any) => {
+          if (progress.status === 'progress') {
+            console.log(`📊 모델 로딩 진행: ${(progress.progress * 100).toFixed(0)}%`);
+          }
+        }
       }
     ).then((model: any) => {
       this.generateEmbedding = model;
       console.log('✅ 로컬 임베딩 모델 로드 완료');
+      this.modelLoading = null;
       return model;
     }).catch((error: any) => {
       console.error('❌ 로컬 임베딩 모델 로드 실패:', error);
