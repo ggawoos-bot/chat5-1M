@@ -1669,7 +1669,7 @@ Here is the source material:
       let actualSourceText = sourceText || this.cachedSourceText || '';
       
       // 🔥 핵심 수정: 컨텍스트 길이 제한 (정보 손실 방지)
-      const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한
+      const MAX_CONTEXT_LENGTH = 50000; // 50,000자로 확장 (답변 품질 향상)
       if (actualSourceText.length > MAX_CONTEXT_LENGTH) {
         console.warn(`⚠️ 컨텍스트 길이 초과: ${actualSourceText.length}자 (제한: ${MAX_CONTEXT_LENGTH}자)`);
         actualSourceText = actualSourceText.substring(0, MAX_CONTEXT_LENGTH);
@@ -1776,7 +1776,7 @@ Here is the source material:
           );
 
           // 컨텍스트 길이 검증 및 제한
-          const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (정보 손실 방지)
+          const MAX_CONTEXT_LENGTH = 50000; // 50,000자로 확장 (답변 품질 향상)
           
           // ✅ 동적 청크 개수 결정
           const calculateOptimalChunkCount = (
@@ -1864,7 +1864,7 @@ Here is the source material:
           log.error('컨텍스트 기반 응답 생성 실패, 제한된 컨텍스트로 폴백', { error: error.message });
           
           // 🔥 핵심 수정: 폴백 시에도 컨텍스트 길이 제한 적용
-          const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (정보 손실 방지)
+          const MAX_CONTEXT_LENGTH = 50000; // 50,000자로 확장 (답변 품질 향상)
           let fallbackContext = this.cachedSourceText || this.fullPdfText || '';
           
           // 폴백 시에도 선택적 컨텍스트 사용 (전체 텍스트 대신)
@@ -2133,7 +2133,7 @@ Here is the source material:
       const ai = new GoogleGenAI({ apiKey: selectedApiKey });
       
       // 컨텍스트 길이 제한 적용
-      const MAX_CONTEXT_LENGTH = 20000; // 20,000자 제한 (일관성 유지)
+      const MAX_CONTEXT_LENGTH = 50000; // 50,000자로 확장 (답변 품질 향상)
       const actualSourceText = sourceText.length > MAX_CONTEXT_LENGTH 
         ? sourceText.substring(0, MAX_CONTEXT_LENGTH) + '...'
         : sourceText;
