@@ -64,7 +64,7 @@ export class UnifiedSearchEngine {
       const allChunks = await this.fetchChunksInBulk(
         questionAnalysis.keywords,
         questionAnalysis.expandedKeywords || [],
-        limit: 500
+        500
       );
       
       console.log(`✅ 대량 데이터 로드 완료: ${allChunks.length}개 청크`);
@@ -136,7 +136,7 @@ export class UnifiedSearchEngine {
   private async fetchChunksInBulk(
     keywords: string[],
     expandedKeywords: string[],
-    limit: number
+    limit: number = 500
   ): Promise<PDFChunk[]> {
     try {
       // 키워드 통합 (중복 제거)
