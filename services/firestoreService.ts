@@ -117,17 +117,17 @@ export class FirestoreService {
     documentId?: string, 
     limitCount: number = 15
   ): Promise<PDFChunk[]> {
-    // 단순한 쿼리로 변경 (인덱스 문제 해결)
+    // ✅ 개선: 충분한 수량 조회 (30개 → 1000개)
     let q = query(
       collection(db, this.chunksCollection),
-      limit(limitCount * 2) // 더 많이 가져와서 필터링
+      limit(1000)
     );
 
     console.log(`🔍 Firestore 쿼리 실행 중...`);
     const snapshot = await getDocs(q);
     console.log(`🔍 Firestore 쿼리 결과: ${snapshot.size}개 문서 조회됨`);
     
-    const chunks: PDFChunk[] = [];
+    const chunksWithScore: Array<{chunk: PDFChunk, score: number}> = [];
     
     snapshot.forEach((doc) => {
       const data = doc.data() as PDFChunk;
@@ -137,33 +137,22 @@ export class FirestoreService {
         return;
       }
       
-      // ✅ 개선: 다중 키워드 OR 검색 (임계값 완화)
-      const keywordMatches = keywords.filter(keyword => {
-        const keywordLower = keyword.toLowerCase();
-        
-        // 1. keywords 배열에서 검색
-        const inKeywords = data.keywords && data.keywords.some(k => 
-          k.toLowerCase().includes(keywordLower) ||
-          keywordLower.includes(k.toLowerCase())
-        );
-        
-        // 2. content에서도 검색 (내용 기반 검색)
-        const inContent = data.content && 
-          data.content.toLowerCase().includes(keywordLower);
-        
-        return inKeywords || inContent;
-      });
+      // ✅ 개선: 키워드 매칭 점수 계산
+      const matchScore = this.calculateKeywordMatchScore(keywords, data);
       
-      // ✅ 완화: 1개 이상의 키워드만 매칭되면 포함 (전체 키워드 매칭 불필요)
-      if (keywordMatches.length > 0) {
-        chunks.push({
-          id: doc.id,
-          ...data
+      // 0점 이상만 포함
+      if (matchScore > 0) {
+        chunksWithScore.push({
+          chunk: {
+            id: doc.id,
+            ...data
+          },
+          score: matchScore
         });
         
-        // ✅ 디버깅: 매칭된 청크의 keywords와 content 스니펫 로그
-        console.log(`📝 청크 매칭: 키워드 "${keywordMatches.join(', ')}"`, {
-          keywords: data.keywords,
+        // ✅ 디버깅: 매칭된 청크 정보 로그
+        console.log(`📝 청크 매칭: 점수 ${matchScore.toFixed(2)}`, {
+          keywords: data.keywords?.slice(0, 5),
           contentPreview: data.content?.substring(0, 100),
           documentId: data.documentId,
           page: data.metadata?.page,
@@ -172,10 +161,57 @@ export class FirestoreService {
       }
     });
 
-    // 결과 제한
-    const limitedChunks = chunks.slice(0, limitCount);
-    console.log(`✅ Firestore 검색 완료: ${limitedChunks.length}개 청크 발견 (전체 ${chunks.length}개 중)`);
+    // ✅ 관련성 점수 순으로 정렬
+    chunksWithScore.sort((a, b) => b.score - a.score);
+    
+    const sortedChunks = chunksWithScore.map(item => item.chunk);
+    const limitedChunks = sortedChunks.slice(0, limitCount);
+    
+    console.log(`✅ Firestore 검색 완료: ${limitedChunks.length}개 청크 발견 (전체 ${sortedChunks.length}개 중, 최고 점수: ${chunksWithScore[0]?.score.toFixed(2) || 0})`);
     return limitedChunks;
+  }
+
+  /**
+   * 키워드 매칭 점수 계산
+   */
+  private calculateKeywordMatchScore(keywords: string[], data: PDFChunk): number {
+    let score = 0;
+    
+    keywords.forEach(keyword => {
+      const keywordLower = keyword.toLowerCase();
+      const contentLower = (data.content || '').toLowerCase();
+      const searchableTextLower = (data.searchableText || '').toLowerCase();
+      
+      // 1. keywords 배열에서 정확히 매칭 (높은 점수)
+      if (data.keywords) {
+        data.keywords.forEach(k => {
+          const kLower = k.toLowerCase();
+          if (kLower === keywordLower) {
+            score += 10; // 정확한 일치
+          } else if (kLower.includes(keywordLower) || keywordLower.includes(kLower)) {
+            score += 3; // 부분 일치
+          }
+        });
+      }
+      
+      // 2. content에서 키워드가 포함된 경우
+      if (contentLower.includes(keywordLower)) {
+        score += 5; // content에서 발견
+      }
+      
+      // 3. searchableText에서 키워드가 포함된 경우 (추가 점수)
+      if (searchableTextLower.includes(keywordLower)) {
+        score += 2; // searchableText에서 발견
+      }
+      
+      // 4. content에서 키워드가 여러 번 나타나는 경우 (추가 점수)
+      const keywordCount = (contentLower.match(new RegExp(keywordLower, 'g')) || []).length;
+      if (keywordCount > 1) {
+        score += Math.min(keywordCount - 1, 5); // 최대 5점까지
+      }
+    });
+    
+    return score;
   }
 
   /**
