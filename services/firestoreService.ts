@@ -35,6 +35,8 @@ export interface PDFChunk {
     startPos: number;
     endPos: number;
     originalSize: number;
+    title?: string;      // ✅ 문서 제목
+    source?: string;     // ✅ 문서 출처
   };
   searchableText: string;
   createdAt: Timestamp;
@@ -315,6 +317,33 @@ export class FirestoreService {
 
     console.log(`✅ 문서 청크 로드 완료: ${chunks.length}개`);
     return chunks;
+  }
+
+  /**
+   * 특정 문서 ID로 문서 정보 가져오기
+   */
+  async getDocumentById(documentId: string): Promise<PDFDocument | null> {
+    try {
+      console.log(`📄 문서 정보 조회: ${documentId}`);
+      
+      const docRef = doc(collection(db, this.documentsCollection), documentId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data() as PDFDocument;
+        console.log(`✅ 문서 정보 조회 성공: ${data.title}`);
+        return {
+          id: docSnap.id,
+          ...data
+        };
+      } else {
+        console.warn(`⚠️ 문서를 찾을 수 없음: ${documentId}`);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ 문서 정보 조회 오류:', error);
+      return null;
+    }
   }
 
   /**

@@ -392,26 +392,7 @@ export class ContextSelector {
       console.log(`📊 Firestore 원본 결과: ${firestoreResults.length}개 청크`);
       
       // Firestore 결과를 Chunk 형식으로 변환
-      firestoreChunks = firestoreResults.map((chunk: PDFChunk) => ({
-        id: chunk.id || `firestore-${Math.random()}`,
-        content: chunk.content,
-        metadata: {
-           source: 'Firestore',
-           title: 'Unknown',
-          page: chunk.metadata?.page || 1,
-          section: chunk.metadata?.section || 'Unknown',
-          position: chunk.metadata?.position || 0,
-           startPosition: chunk.metadata?.startPos || 0,
-           endPosition: chunk.metadata?.endPos || 0,
-          originalSize: chunk.metadata?.originalSize || 0
-        },
-        keywords: chunk.keywords || [],
-        location: {
-          document: 'Unknown',
-          section: chunk.metadata?.section || 'Unknown',
-          page: chunk.metadata?.page || 1
-        }
-      }));
+      firestoreChunks = await this.convertPDFChunksToChunks(firestoreResults);
       
       console.log(`✅ 1단계 완료: Firestore 키워드 검색 ${firestoreChunks.length}개 청크`);
       console.log(`📋 검색된 청크 정보:`, firestoreChunks.map(c => ({
@@ -440,28 +421,9 @@ export class ContextSelector {
         console.log(`📊 Firestore 텍스트 검색 원본 결과: ${textResults.length}개 청크`);
         
         // 중복 제거하면서 추가
-        const additionalChunks = textResults
-          .filter(chunk => !firestoreChunks.some(existing => existing.id === chunk.id))
-          .map((chunk: PDFChunk) => ({
-            id: chunk.id || `firestore-text-${Math.random()}`,
-            content: chunk.content,
-            metadata: {
-              source: 'Firestore',
-              title: 'Unknown',
-              page: chunk.metadata?.page || 1,
-              section: chunk.metadata?.section || 'Unknown',
-              position: chunk.metadata?.position || 0,
-              startPosition: chunk.metadata?.startPos || 0,
-              endPosition: chunk.metadata?.endPos || 0,
-              originalSize: chunk.metadata?.originalSize || 0
-            },
-            keywords: chunk.keywords || [],
-            location: {
-              document: 'Unknown',
-              section: chunk.metadata?.section || 'Unknown',
-              page: chunk.metadata?.page || 1
-            }
-          }));
+        const filteredTextResults = textResults
+          .filter(chunk => !firestoreChunks.some(existing => existing.id === chunk.id));
+        const additionalChunks = await this.convertPDFChunksToChunks(filteredTextResults);
         
         firestoreChunks = [...firestoreChunks, ...additionalChunks];
         console.log(`✅ 2단계 완료: Firestore 텍스트 검색 ${additionalChunks.length}개 추가 청크`);
@@ -847,6 +809,47 @@ export class ContextSelector {
     const union = [...new Set([...questionWords, ...chunkWords])];
     
     return intersection.length / union.length; // Jaccard 유사도
+  }
+
+  /**
+   * PDFChunk를 Chunk로 변환 (document 정보 조회 포함)
+   */
+  private static async convertPDFChunksToChunks(pdfChunks: PDFChunk[]): Promise<Chunk[]> {
+    // documentId별로 그룹화하여 중복 조회 방지
+    const documentIds = [...new Set(pdfChunks.map(p => p.documentId))];
+    
+    // 모든 문서 정보 조회
+    const documents = await Promise.all(
+      documentIds.map(id => this.firestoreService.getDocumentById(id))
+    );
+    
+    // documentId -> PDFDocument 맵 생성
+    const docMap = new Map(documents.filter(d => d !== null).map(d => [d.id, d]));
+    
+    return pdfChunks.map(pdfChunk => {
+      const doc = docMap.get(pdfChunk.documentId);
+      
+      return {
+        id: pdfChunk.id || `firestore-${Math.random()}`,
+        content: pdfChunk.content,
+        metadata: {
+          source: pdfChunk.metadata?.source || doc?.filename || 'Firestore',
+          title: pdfChunk.metadata?.title || doc?.title || 'Unknown',
+          page: pdfChunk.metadata?.page || 1,
+          section: pdfChunk.metadata?.section || 'Unknown',
+          position: pdfChunk.metadata?.position || 0,
+          startPosition: pdfChunk.metadata?.startPos || 0,
+          endPosition: pdfChunk.metadata?.endPos || 0,
+          originalSize: pdfChunk.metadata?.originalSize || 0
+        },
+        keywords: pdfChunk.keywords || [],
+        location: {
+          document: doc?.title || pdfChunk.documentId || 'Unknown',
+          section: pdfChunk.metadata?.section || 'Unknown',
+          page: pdfChunk.metadata?.page || 1
+        }
+      };
+    });
   }
 }
 

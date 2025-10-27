@@ -110,7 +110,7 @@ export class MultiStageSearchSystem {
         this.MAX_RESULTS_PER_STAGE
       );
       
-      const chunks = this.convertPDFChunksToChunks(results);
+      const chunks = await this.convertPDFChunksToChunks(results);
       const executionTime = Date.now() - startTime;
       
       console.log(`✅ 1단계 완료: ${chunks.length}개 결과, ${executionTime}ms`);
@@ -149,7 +149,7 @@ export class MultiStageSearchSystem {
         this.MAX_RESULTS_PER_STAGE
       );
       
-      const chunks = this.convertPDFChunksToChunks(results);
+      const chunks = await this.convertPDFChunksToChunks(results);
       const executionTime = Date.now() - startTime;
       
       console.log(`✅ 2단계 완료: ${chunks.length}개 결과, ${executionTime}ms`);
@@ -190,7 +190,7 @@ export class MultiStageSearchSystem {
         this.MAX_RESULTS_PER_STAGE
       );
       
-      const chunks = this.convertPDFChunksToChunks(results);
+      const chunks = await this.convertPDFChunksToChunks(results);
       const executionTime = Date.now() - startTime;
       
       console.log(`✅ 3단계 완료: ${chunks.length}개 결과, ${executionTime}ms`);
@@ -228,7 +228,7 @@ export class MultiStageSearchSystem {
         this.MAX_RESULTS_PER_STAGE
       );
       
-      const chunks = this.convertPDFChunksToChunks(results);
+      const chunks = await this.convertPDFChunksToChunks(results);
       const executionTime = Date.now() - startTime;
       
       console.log(`✅ 4단계 완료: ${chunks.length}개 결과, ${executionTime}ms`);
@@ -276,7 +276,7 @@ export class MultiStageSearchSystem {
         this.MAX_RESULTS_PER_STAGE
       );
       
-      const chunks = this.convertPDFChunksToChunks(results);
+      const chunks = await this.convertPDFChunksToChunks(results);
       const executionTime = Date.now() - startTime;
       
       console.log(`✅ 5단계 완료: ${chunks.length}개 결과, ${executionTime}ms`);
@@ -366,31 +366,45 @@ export class MultiStageSearchSystem {
   }
 
   /**
-   * PDFChunk를 Chunk로 변환
+   * PDFChunk를 Chunk로 변환 (document 정보 조회 포함)
    */
-  private convertPDFChunksToChunks(pdfChunks: PDFChunk[]): Chunk[] {
-    return pdfChunks.map(pdfChunk => ({
-      id: pdfChunk.id || '',
-      content: pdfChunk.content,
-      metadata: {
-        source: pdfChunk.metadata.source || 'Firestore',
-        title: pdfChunk.metadata.title || 'Unknown',
-        page: pdfChunk.metadata.page || 0,
-        section: pdfChunk.metadata.section || 'general',
-        position: pdfChunk.metadata.position || 0,
-        startPosition: pdfChunk.metadata.startPos || 0,
-        endPosition: pdfChunk.metadata.endPos || 0,
-        originalSize: pdfChunk.metadata.originalSize || 0,
-        documentType: pdfChunk.metadata.documentType
-      },
-      keywords: pdfChunk.keywords || [],
-      location: {
-        // ✅ 핵심 수정: pdfChunk.location이 없는 경우 대응
-        document: pdfChunk.location?.document || pdfChunk.documentId || 'Unknown',
-        section: pdfChunk.location?.section || pdfChunk.metadata.section || 'general',
-        page: pdfChunk.location?.page || pdfChunk.metadata.page || 0
-      }
-    }));
+  private async convertPDFChunksToChunks(pdfChunks: PDFChunk[]): Promise<Chunk[]> {
+    // documentId별로 그룹화하여 중복 조회 방지
+    const documentIds = [...new Set(pdfChunks.map(p => p.documentId))];
+    
+    // 모든 문서 정보 조회
+    const documents = await Promise.all(
+      documentIds.map(id => this.firestoreService.getDocumentById(id))
+    );
+    
+    // documentId -> PDFDocument 맵 생성
+    const docMap = new Map(documents.filter(d => d !== null).map(d => [d.id, d]));
+    
+    return pdfChunks.map(pdfChunk => {
+      const doc = docMap.get(pdfChunk.documentId);
+      
+      return {
+        id: pdfChunk.id || '',
+        content: pdfChunk.content,
+        metadata: {
+          source: pdfChunk.metadata.source || doc?.filename || 'Firestore',
+          title: pdfChunk.metadata.title || doc?.title || 'Unknown',
+          page: pdfChunk.metadata.page || 0,
+          section: pdfChunk.metadata.section || 'general',
+          position: pdfChunk.metadata.position || 0,
+          startPosition: pdfChunk.metadata.startPos || 0,
+          endPosition: pdfChunk.metadata.endPos || 0,
+          originalSize: pdfChunk.metadata.originalSize || 0,
+          documentType: pdfChunk.metadata.documentType
+        },
+        keywords: pdfChunk.keywords || [],
+        location: {
+          document: pdfChunk.location?.document || doc?.title || pdfChunk.documentId || 'Unknown',
+          section: pdfChunk.location?.section || pdfChunk.metadata.section || 'general',
+          page: pdfChunk.location?.page || pdfChunk.metadata.page || 0
+        }
+      };
+    });
   }
 
   /**
