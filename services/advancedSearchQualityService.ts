@@ -5,20 +5,24 @@
 
 import { Chunk, QuestionAnalysis } from '../types';
 import { ContextQualityOptimizer, EnhancedChunk } from './contextQualityOptimizer';
-import { MultiStageSearchSystem } from './multiStageSearchSystem';
-import { SemanticSearchEngine } from './semanticSearchEngine';
+import { UnifiedSearchEngine, UnifiedSearchResult } from './unifiedSearchEngine';
 import { AnswerValidationSystem } from './answerValidationSystem';
 import { PromptEngineeringSystem } from './promptEngineeringSystem';
 
 export interface AdvancedSearchResult {
   chunks: EnhancedChunk[];
   searchMetrics: {
-    totalStages: number;
-    successfulStages: number;
+    totalProcessed: number;
+    uniqueResults: number;
     averageRelevance: number;
     searchCoverage: number;
     resultDiversity: number;
     executionTime: number;
+    scoreBreakdown: {
+      keyword: number;
+      synonym: number;
+      semantic: number;
+    };
   };
   qualityMetrics: {
     totalChunks: number;
@@ -42,93 +46,54 @@ export interface AnswerValidationResult {
 }
 
 export class AdvancedSearchQualityService {
-  private multiStageSearch: MultiStageSearchSystem;
-  private semanticSearch: SemanticSearchEngine;
-  private static readonly DEFAULT_MAX_CHUNKS = 20; // 15 → 20 증가
+  private unifiedSearch: UnifiedSearchEngine;
+  private static readonly DEFAULT_MAX_CHUNKS = 20;
   private static readonly MAX_CONTEXT_LENGTH = 50000;
 
   constructor() {
-    this.multiStageSearch = new MultiStageSearchSystem();
-    this.semanticSearch = new SemanticSearchEngine();
+    this.unifiedSearch = new UnifiedSearchEngine();
   }
 
   /**
-   * 고급 검색 실행 (다단계 + 의미적 검색 통합)
+   * 고급 검색 실행 (통합 검색 엔진 사용)
    */
   async executeAdvancedSearch(
     questionAnalysis: QuestionAnalysis,
     maxChunks: number = AdvancedSearchQualityService.DEFAULT_MAX_CHUNKS
   ): Promise<AdvancedSearchResult> {
     const startTime = Date.now();
-    console.log(`🚀 고급 검색 시작: "${questionAnalysis.context}"`);
+    console.log(`🚀 통합 검색 실행: "${questionAnalysis.context}"`);
     
     // ✅ 핵심 수정: maxChunks가 유효하지 않으면 기본값 사용
     const validMaxChunks = (maxChunks && maxChunks > 0) ? maxChunks : AdvancedSearchQualityService.DEFAULT_MAX_CHUNKS;
     
     try {
-      // 1. 다단계 검색 실행 (50%만 사용)
-      const multiStageTarget = Math.floor(validMaxChunks * 0.5);
-      const multiStageResult = await this.multiStageSearch.executeMultiStageSearch(
-        questionAnalysis,
-        multiStageTarget
-      );
-
-      console.log(`✅ 다단계 검색 완료: ${multiStageResult.finalResults.length}개 결과 (목표: ${multiStageTarget})`);
-
-      // 2. 의미적 검색(벡터 검색) 항상 실행 - 하이브리드 접근법
-      let semanticResults: Chunk[] = [];
-      const remainingChunks = validMaxChunks - multiStageResult.finalResults.length;
-      
-      if (remainingChunks > 0) {
-        try {
-          console.log(`🔍 벡터 검색 시작: ${remainingChunks}개 청크 보완 필요`);
-          const semanticResult = await this.semanticSearch.executeSemanticSearch(
-            questionAnalysis,
-            remainingChunks
-          );
-          semanticResults = semanticResult.chunks;
-          console.log(`✅ 벡터 검색 완료: ${semanticResults.length}개 추가 결과`);
-        } catch (error) {
-          console.warn('⚠️ 벡터 검색 실패:', error);
-        }
-      } else {
-        console.log('ℹ️ 추가 벡터 검색 불필요 (다단계 검색 결과 충분)');
-      }
-
-      // 3. 결과 통합
-      const allResults = [...multiStageResult.finalResults, ...semanticResults];
-      
-      // 중복 제거
-      const uniqueResults = this.removeDuplicateChunks(allResults);
-
-      // 4. 컨텍스트 품질 최적화
-      const optimizedResults = ContextQualityOptimizer.optimizeContextQuality(
-        uniqueResults,
+      // ✅ 통합 검색 엔진 사용 (중복 제거, 성능 최적화)
+      const unifiedResult = await this.unifiedSearch.executeUnifiedSearch(
         questionAnalysis,
         validMaxChunks
       );
 
-      // 5. 컨텍스트 길이 제한 적용
-      const finalResults = this.applyContextLengthLimit(optimizedResults);
-
       const executionTime = Date.now() - startTime;
 
       const result: AdvancedSearchResult = {
-        chunks: finalResults,
+        chunks: unifiedResult.chunks,
         searchMetrics: {
-          totalStages: multiStageResult.stages.length,
-          successfulStages: multiStageResult.stages.filter(s => s.success).length,
-          averageRelevance: multiStageResult.qualityMetrics.averageRelevance,
-          searchCoverage: multiStageResult.qualityMetrics.searchCoverage,
-          resultDiversity: multiStageResult.qualityMetrics.resultDiversity,
-          executionTime
+          totalProcessed: unifiedResult.searchMetrics.totalProcessed,
+          uniqueResults: unifiedResult.searchMetrics.uniqueResults,
+          averageRelevance: unifiedResult.searchMetrics.averageRelevance,
+          searchCoverage: unifiedResult.searchMetrics.uniqueResults / unifiedResult.searchMetrics.totalProcessed,
+          resultDiversity: this.calculateDiversity(unifiedResult.chunks),
+          executionTime,
+          scoreBreakdown: unifiedResult.searchMetrics.scoreBreakdown
         },
-        qualityMetrics: ContextQualityOptimizer.generateQualitySummary(finalResults)
+        qualityMetrics: ContextQualityOptimizer.generateQualitySummary(unifiedResult.chunks)
       };
 
-      console.log(`🎉 고급 검색 완료: ${finalResults.length}개 최종 결과, ${executionTime}ms`);
+      console.log(`🎉 통합 검색 완료: ${unifiedResult.chunks.length}개 최종 결과, ${executionTime}ms`);
       console.log(`📊 검색 품질: 평균 관련성 ${result.searchMetrics.averageRelevance.toFixed(3)}`);
       console.log(`📊 컨텍스트 품질: 평균 점수 ${result.qualityMetrics.averageOverall.toFixed(3)}`);
+      console.log(`📊 점수 분포: 키워드 ${result.searchMetrics.scoreBreakdown.keyword.toFixed(2)}, 동의어 ${result.searchMetrics.scoreBreakdown.synonym.toFixed(2)}, 의미 ${result.searchMetrics.scoreBreakdown.semantic.toFixed(2)}`);
 
       return result;
 
@@ -136,6 +101,16 @@ export class AdvancedSearchQualityService {
       console.error('❌ 고급 검색 오류:', error);
       throw error;
     }
+  }
+  
+  /**
+   * 결과 다양성 계산
+   */
+  private calculateDiversity(chunks: EnhancedChunk[]): number {
+    if (chunks.length === 0) return 0;
+    
+    const documentIds = new Set(chunks.map(c => c.metadata?.source || ''));
+    return documentIds.size / chunks.length;
   }
 
   /**
