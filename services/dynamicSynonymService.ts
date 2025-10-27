@@ -45,7 +45,7 @@ export class DynamicSynonymService {
       console.log('📚 포괄적 동의어 사전 로드 중...');
       
       // fetch를 사용하여 JSON 파일 로드
-      const response = await fetch('/data/comprehensive-synonym-dictionary.json');
+      const response = await fetch('/chat5-1M/data/comprehensive-synonym-dictionary.json');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
