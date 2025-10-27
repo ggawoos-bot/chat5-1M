@@ -45,7 +45,7 @@ export class UnifiedSearchEngine {
     this.firestoreService = FirestoreService.getInstance();
     this.unifiedSynonymService = UnifiedSynonymService.getInstance();
     this.comprehensiveSynonymExpansion = ComprehensiveSynonymExpansion.getInstance();
-    this.localEmbeddingService = new LocalEmbeddingService();
+    this.localEmbeddingService = LocalEmbeddingService.getInstance();
   }
 
   /**
@@ -53,7 +53,7 @@ export class UnifiedSearchEngine {
    */
   async executeUnifiedSearch(
     questionAnalysis: QuestionAnalysis,
-    maxChunks: number = 20
+    maxChunks: number = 50  // ✅ 하이브리드 개선: 20 → 50
   ): Promise<UnifiedSearchResult> {
     const startTime = Date.now();
     console.log(`🚀 통합 검색 시작: "${questionAnalysis.context}"`);
@@ -87,11 +87,21 @@ export class UnifiedSearchEngine {
       console.log(`✅ 중복 제거 완료: ${uniqueChunks.length}개 최종 결과`);
       
       // 4단계: 컨텍스트 품질 최적화
-      const chunks = uniqueChunks.map(scored => {
+      const chunks: EnhancedChunk[] = uniqueChunks.map(scored => {
         const chunk: EnhancedChunk = {
           ...(scored.chunk as Chunk),
-          relevanceScore: scored.score,
-          qualityScore: scored.score
+          qualityMetrics: {
+            relevanceScore: scored.score,
+            completenessScore: scored.score,
+            accuracyScore: scored.score,
+            clarityScore: scored.score,
+            overallScore: scored.score
+          },
+          contextInfo: {
+            documentType: 'PDF',
+            section: scored.chunk.metadata?.section || 'general',
+            importance: 'medium' as const
+          }
         };
         return chunk;
       });
@@ -131,20 +141,85 @@ export class UnifiedSearchEngine {
   }
   
   /**
-   * 단일 Firestore 쿼리로 대량 데이터 로드
+   * ✅ 하이브리드 검색: 다단계 병렬 검색 + 폴백
+   * 평상시: 키워드 기반 필터링으로 빠른 검색
+   * 폴백: 결과 부족 시 전체 스캔으로 안전장치
    */
   private async fetchChunksInBulk(
     keywords: string[],
     expandedKeywords: string[],
-    limit: number = 500
+    limit: number = 600
   ): Promise<PDFChunk[]> {
     try {
-      // 키워드 통합 (중복 제거)
-      const allKeywords = [...new Set([...keywords, ...expandedKeywords])];
+      console.log(`🔍 하이브리드 검색 시작: ${keywords.length}개 키워드, ${expandedKeywords.length}개 동의어`);
       
-      console.log(`🔍 통합 키워드: ${allKeywords.length}개 (원본: ${keywords.length}, 확장: ${expandedKeywords.length})`);
+      // 1단계: 다단계 병렬 검색 (키워드, 동의어, 의미)
+      const chunks = await this.fetchChunksWithMultipleStrategies(keywords, expandedKeywords);
       
-      // Firestore에서 모든 청크 가져오기
+      console.log(`✅ 1단계 완료: ${chunks.length}개 청크 발견`);
+      
+      // 2단계: 폴백 검증 (결과 부족 시 전체 스캔)
+      if (chunks.length < 50) {
+        console.warn(`⚠️ 검색 결과 부족 (${chunks.length}개 < 50개), 전체 스캔 시작...`);
+        const allChunks = await this.fetchAllChunks();
+        const filteredChunks = this.filterChunksByKeywords(allChunks, [...keywords, ...expandedKeywords]);
+        
+        console.log(`✅ 폴백 완료: ${filteredChunks.length}개 청크 발견`);
+        return filteredChunks;
+      }
+      
+      return chunks;
+      
+    } catch (error) {
+      console.error('❌ 하이브리드 검색 실패:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 다단계 병렬 검색 (키워드 + 동의어 + 의미)
+   */
+  private async fetchChunksWithMultipleStrategies(
+    keywords: string[],
+    expandedKeywords: string[]
+  ): Promise<PDFChunk[]> {
+    const results: PDFChunk[] = [];
+    
+    // 병렬 실행: 3가지 검색 전략
+    const [result1, result2, result3] = await Promise.all([
+      // 전략1: 기본 키워드 검색
+      this.firestoreService.searchChunksByKeywords(keywords, undefined, 500).catch(() => []),
+      
+      // 전략2: 동의어 확장 검색
+      expandedKeywords.length > 0
+        ? this.firestoreService.searchChunksByKeywords(expandedKeywords, undefined, 500).catch(() => [])
+        : Promise.resolve([]),
+      
+      // 전략3: 넓은 범위 의미 검색
+      this.fetchSemanticChunks(keywords, expandedKeywords, 500).catch(() => [])
+    ]);
+    
+    // 결과 병합
+    results.push(...result1);
+    results.push(...result2);
+    results.push(...result3);
+    
+    // 중복 제거
+    const uniqueChunks = this.deduplicateChunks(results);
+    
+    return uniqueChunks;
+  }
+
+  /**
+   * 넓은 범위 의미 검색 (전체 스캔 후 키워드 필터링)
+   */
+  private async fetchSemanticChunks(
+    keywords: string[],
+    expandedKeywords: string[],
+    limit: number
+  ): Promise<PDFChunk[]> {
+    try {
+      // Firestore에서 더 많은 청크 가져오기
       const allDocuments = await this.firestoreService.getAllDocuments();
       const allChunks: PDFChunk[] = [];
       
@@ -153,14 +228,65 @@ export class UnifiedSearchEngine {
         allChunks.push(...chunks);
       }
       
-      console.log(`📦 총 ${allChunks.length}개 청크 로드됨`);
+      // 키워드 매칭 필터링
+      const matchingChunks = this.filterChunksByKeywords(allChunks, [...keywords, ...expandedKeywords]);
+      
+      return matchingChunks.slice(0, limit);
+      
+    } catch (error) {
+      console.error('❌ 의미 검색 실패:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 전체 청크 가져오기 (폴백용)
+   */
+  private async fetchAllChunks(): Promise<PDFChunk[]> {
+    try {
+      const allDocuments = await this.firestoreService.getAllDocuments();
+      const allChunks: PDFChunk[] = [];
+      
+      for (const doc of allDocuments) {
+        const chunks = await this.firestoreService.getChunksByDocument(doc.id);
+        allChunks.push(...chunks);
+      }
       
       return allChunks;
       
     } catch (error) {
-      console.error('❌ 대량 데이터 로드 실패:', error);
+      console.error('❌ 전체 청크 로드 실패:', error);
       return [];
     }
+  }
+
+  /**
+   * 키워드로 청크 필터링
+   */
+  private filterChunksByKeywords(chunks: PDFChunk[], keywords: string[]): PDFChunk[] {
+    return chunks.filter(chunk => {
+      // keywords 필드 매칭
+      if (chunk.keywords?.some(k => keywords.some(kw => k.toLowerCase().includes(kw.toLowerCase())))) {
+        return true;
+      }
+      
+      // content 매칭
+      const contentLower = chunk.content?.toLowerCase() || '';
+      return keywords.some(kw => contentLower.includes(kw.toLowerCase()));
+    });
+  }
+
+  /**
+   * 청크 중복 제거
+   */
+  private deduplicateChunks(chunks: PDFChunk[]): PDFChunk[] {
+    const seen = new Set<string>();
+    return chunks.filter(chunk => {
+      const key = `${chunk.documentId}_${chunk.metadata?.position || 0}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   
   /**
@@ -369,14 +495,13 @@ export class UnifiedSearchEngine {
           position: pdfChunk.metadata.position || 0,
           startPosition: pdfChunk.metadata.startPos || 0,
           endPosition: pdfChunk.metadata.endPos || 0,
-          originalSize: pdfChunk.metadata.originalSize || 0,
-          documentType: pdfChunk.metadata.documentType
+          originalSize: pdfChunk.metadata.originalSize || 0
         },
         keywords: pdfChunk.keywords || [],
         location: {
-          document: pdfChunk.location?.document || doc?.title || pdfChunk.documentId || 'Unknown',
-          section: pdfChunk.location?.section || pdfChunk.metadata.section || 'general',
-          page: pdfChunk.location?.page || pdfChunk.metadata.page || 0
+          document: doc?.title || pdfChunk.documentId || 'Unknown',
+          section: pdfChunk.metadata.section || 'general',
+          page: pdfChunk.metadata.page || 0
         }
       };
     });

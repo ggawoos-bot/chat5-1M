@@ -47,7 +47,7 @@ export interface AnswerValidationResult {
 
 export class AdvancedSearchQualityService {
   private unifiedSearch: UnifiedSearchEngine;
-  private static readonly DEFAULT_MAX_CHUNKS = 20;
+  private static readonly DEFAULT_MAX_CHUNKS = 50;  // ✅ 하이브리드 개선: 20 → 50
   private static readonly MAX_CONTEXT_LENGTH = 50000;
 
   constructor() {
