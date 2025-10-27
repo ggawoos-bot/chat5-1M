@@ -134,7 +134,7 @@ export class SemanticSearchEngine {
         similarities,
         searchMetrics: {
           totalProcessed: chunks.length,
-          averageSimilarity: this.calculateAverageSimilarity({ map: () => similarities }),
+          averageSimilarity: this.calculateAverageSimilarity(similarities),
           maxSimilarity: Math.max(...similarities),
           minSimilarity: Math.min(...similarities),
           executionTime
