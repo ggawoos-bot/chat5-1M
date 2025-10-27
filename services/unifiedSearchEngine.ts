@@ -211,7 +211,8 @@ export class UnifiedSearchEngine {
   }
 
   /**
-   * 넓은 범위 의미 검색 (전체 스캔 후 키워드 필터링)
+   * ✅ 개선: 넓은 범위 의미 검색 (Firestore 쿼리 직접 사용)
+   * 전체 청크를 로드하지 않고, 키워드 필터링된 청크만 가져오기
    */
   private async fetchSemanticChunks(
     keywords: string[],
@@ -219,19 +220,17 @@ export class UnifiedSearchEngine {
     limit: number
   ): Promise<PDFChunk[]> {
     try {
-      // Firestore에서 더 많은 청크 가져오기
-      const allDocuments = await this.firestoreService.getAllDocuments();
-      const allChunks: PDFChunk[] = [];
+      // 모든 키워드 통합
+      const allKeywords = [...new Set([...keywords, ...expandedKeywords])];
       
-      for (const doc of allDocuments) {
-        const chunks = await this.firestoreService.getChunksByDocument(doc.id);
-        allChunks.push(...chunks);
-      }
+      // Firestore에서 키워드 필터링된 청크만 가져오기 (전체 로드 방지)
+      const chunks = await this.firestoreService.searchChunksByKeywords(
+        allKeywords,
+        undefined,
+        limit
+      );
       
-      // 키워드 매칭 필터링
-      const matchingChunks = this.filterChunksByKeywords(allChunks, [...keywords, ...expandedKeywords]);
-      
-      return matchingChunks.slice(0, limit);
+      return chunks;
       
     } catch (error) {
       console.error('❌ 의미 검색 실패:', error);

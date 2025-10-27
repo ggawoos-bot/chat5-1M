@@ -548,7 +548,7 @@ Here is the source material:
           const forcedNewKey = this.getNextAvailableKey();
           if (forcedNewKey && forcedNewKey !== currentKey) {
             console.log(`✅ 강제 키 교체: ${forcedNewKey.substring(0, 10)}...`);
-            return true;
+        return true;
           }
         } else {
           console.log(`✅ 키 교체 성공: ${newKey.substring(0, 10)}...`);
@@ -602,9 +602,9 @@ Here is the source material:
     }
     
     // 기본적으로 키 교체 시도
-    return this.switchToNextKey();
-  }
-
+      return this.switchToNextKey();
+    }
+    
   // API 호출 시 RPD 기록 (비동기)
   private async recordApiCall(keyId: string): Promise<boolean> {
     console.log(`RPD 기록 시도: ${keyId}`);
@@ -646,21 +646,21 @@ Here is the source material:
             continue; // 키 교체 후 즉시 재시도
           } else {
             console.log('❌ 키 교체 실패, 지연 후 재시도...');
-            if (attempt < maxRetries) {
+          if (attempt < maxRetries) {
               const delay = retryDelay * Math.pow(2, attempt - 1);
-              console.log(`${delay}ms 후 재시도...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              continue;
-            }
+            console.log(`${delay}ms 후 재시도...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
           }
+        }
         } else {
           // 다른 오류의 경우 기존 로직
-          const apiKeys = this.getApiKeys();
-          const currentKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
-          if (this.handleApiKeyFailure(apiKeys[currentKeyIndex], error)) {
-            if (attempt < maxRetries) {
-              console.log('API 키 교체 후 재시도...');
-              continue;
+        const apiKeys = this.getApiKeys();
+        const currentKeyIndex = (GeminiService.currentKeyIndex - 1 + apiKeys.length) % apiKeys.length;
+        if (this.handleApiKeyFailure(apiKeys[currentKeyIndex], error)) {
+          if (attempt < maxRetries) {
+            console.log('API 키 교체 후 재시도...');
+            continue;
             }
           }
         }
@@ -678,10 +678,10 @@ Here is the source material:
   // 다음 사용 가능한 키 조회 (RPD 고려) - 비동기
   private async getNextAvailableKeyWithRpd(): Promise<string | null> {
     try {
-      // RPD에서 사용 가능한 키 확인
+    // RPD에서 사용 가능한 키 확인
       const rpdAvailableKey = await rpdService.getNextAvailableKey();
-      if (rpdAvailableKey) {
-        return rpdAvailableKey;
+    if (rpdAvailableKey) {
+      return rpdAvailableKey;
       }
     } catch (error) {
       console.warn('RPD 키 조회 실패:', error);
@@ -849,9 +849,9 @@ Here is the source material:
     // 각 패턴에 대해 매칭
     articlePatterns.forEach(pattern => {
       try {
-        const matches = pageText.match(pattern);
-        if (matches) {
-          articles.push(...matches);
+      const matches = pageText.match(pattern);
+      if (matches) {
+        articles.push(...matches);
         }
       } catch (error) {
         console.warn('extractLegalArticles: pattern matching failed', { error, pattern, pageText: pageText.substring(0, 100) });
@@ -1047,7 +1047,7 @@ Here is the source material:
     }
 
     this.isInitializing = true;
-    
+
     try {
       console.log('🚀 Initializing PDF sources...');
       
@@ -1494,12 +1494,12 @@ Here is the source material:
         return null;
       }
       
-      // 모든 PDF 문서의 청크를 가져와서 텍스트 생성
+      // ✅ 개선: 초기화 시에는 청크만 로드, fullText 생성하지 않음
+      // fullText는 질문 발생 시 ContextSelector에서 필요한 청크만 선택하여 생성
       console.log('🔍 PDF 문서 목록 가져오기...');
       const allDocuments = await this.firestoreService.getAllDocuments();
       console.log(`🔍 PDF 문서 ${allDocuments.length}개 발견:`, allDocuments.map(d => d.filename));
       
-      let fullText = '';
       const chunks: Chunk[] = [];
       
       for (const doc of allDocuments) {
@@ -1531,12 +1531,9 @@ Here is the source material:
         }));
         
         chunks.push(...convertedChunks);
-        fullText += `[${doc.filename}]\n${docChunks.map(c => c.content).join('\n\n')}\n\n---\n\n`;
       }
       
-      // Firestore 데이터는 압축 없이 사용 (최적화)
-      this.cachedSourceText = fullText;
-      this.fullPdfText = fullText;
+      // ✅ 개선: 청크만 저장, fullText는 생성하지 않음
       this.allChunks = chunks;
       this.isInitialized = true;
       
@@ -1545,18 +1542,19 @@ Here is the source material:
       ContextSelector.setChunks(chunks);
       console.log(`✅ ContextSelector 설정 완료: ${chunks.length}개 청크`);
       
-      // 압축 결과 설정 (압축 없이)
+      // ✅ 개선: 빈 텍스트 반환 (실제 사용 시에는 ContextSelector에서 선택된 청크만 사용)
+      this.cachedSourceText = '';
       this.compressionResult = {
-        compressedText: fullText,
-        originalLength: fullText.length,
-        compressedLength: fullText.length,
+        compressedText: '',
+        originalLength: 0,
+        compressedLength: 0,
         compressionRatio: 1.0,
-        estimatedTokens: Math.ceil(fullText.length / 4),
-        qualityScore: 100 // Firestore 데이터는 최고 품질 (압축 없음)
+        estimatedTokens: 0,
+        qualityScore: 100
       };
       
-      console.log(`✅ Firestore 데이터 로드 완료: ${chunks.length}개 청크, ${fullText.length.toLocaleString()}자 (압축 없음)`);
-      return fullText;
+      console.log(`✅ Firestore 청크 로드 완료: ${chunks.length}개 청크 (fullText 생성 안함)`);
+      return '';
       
     } catch (error) {
       console.error('❌ Firestore 데이터 로드 실패:', error);
@@ -1652,20 +1650,20 @@ Here is the source material:
     this.isCreatingSession = true;
 
     try {
-      // 매번 새로운 API 키 선택
-      const selectedApiKey = this.getNextAvailableKey();
-      if (!selectedApiKey) {
-        throw new Error('사용 가능한 API 키가 없습니다.');
-      }
+    // 매번 새로운 API 키 선택
+    const selectedApiKey = this.getNextAvailableKey();
+    if (!selectedApiKey) {
+      throw new Error('사용 가능한 API 키가 없습니다.');
+    }
 
-      console.log(`채팅 세션 생성 - API 키: ${selectedApiKey.substring(0, 10)}...`);
+    console.log(`채팅 세션 생성 - API 키: ${selectedApiKey.substring(0, 10)}...`);
 
-      // PDF 내용이 아직 초기화되지 않았다면 초기화
-      if (!this.isInitialized) {
-        await this.initializeWithPdfSources();
-      }
+    // PDF 내용이 아직 초기화되지 않았다면 초기화
+    if (!this.isInitialized) {
+      await this.initializeWithPdfSources();
+    }
 
-      // 압축된 PDF 내용 사용 (캐시된 내용)
+    // 압축된 PDF 내용 사용 (캐시된 내용)
       let actualSourceText = sourceText || this.cachedSourceText || '';
       
       // 🔥 핵심 수정: 컨텍스트 길이 제한 (정보 손실 방지)
@@ -1678,7 +1676,7 @@ Here is the source material:
       
       const systemInstruction = GeminiService.SYSTEM_INSTRUCTION_TEMPLATE.replace('{sourceText}', actualSourceText);
 
-      console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
+    console.log(`Creating chat session with compressed text: ${actualSourceText.length.toLocaleString()} characters`);
 
       // 새로운 AI 인스턴스 생성 (선택된 키로)
       const ai = new GoogleGenAI({ apiKey: selectedApiKey });
@@ -1967,7 +1965,7 @@ Here is the source material:
       const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
-          systemInstruction: systemInstruction
+        systemInstruction: systemInstruction
         },
         history: [],
       });
@@ -2036,7 +2034,7 @@ Here is the source material:
       const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
-          systemInstruction: systemInstruction
+        systemInstruction: systemInstruction
         },
         history: [],
       });
