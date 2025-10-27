@@ -26,7 +26,7 @@ export interface UnifiedSearchResult {
 }
 
 export interface ScoredChunk {
-  chunk: PDFChunk;
+  chunk: PDFChunk | Chunk;
   score: number;
   breakdown: {
     keyword: number;
@@ -89,7 +89,7 @@ export class UnifiedSearchEngine {
       // 4단계: 컨텍스트 품질 최적화
       const chunks = uniqueChunks.map(scored => {
         const chunk: EnhancedChunk = {
-          ...scored.chunk,
+          ...(scored.chunk as Chunk),
           relevanceScore: scored.score,
           qualityScore: scored.score
         };
@@ -169,8 +169,11 @@ export class UnifiedSearchEngine {
   private async scoreChunksByMultipleStrategies(
     chunks: PDFChunk[],
     questionAnalysis: QuestionAnalysis
-  ): Promise<ScoredChunk[]> {
-    const results: ScoredChunk[] = [];
+  ): Promise<Array<{ chunk: Chunk; score: number; breakdown: any }>> {
+    // ✅ PDFChunk를 Chunk로 변환
+    const convertedChunks = await this.convertPDFChunksToChunks(chunks);
+    
+    const results: Array<{ chunk: Chunk; score: number; breakdown: any }> = [];
     
     // 질문 임베딩 사전 계산 (벡터 검색에만 사용)
     let questionEmbedding: number[] | null = null;
@@ -187,25 +190,27 @@ export class UnifiedSearchEngine {
     
     // 병렬 처리로 성능 최적화 (배치 처리)
     const BATCH_SIZE = 100;
-    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-      const batch = chunks.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < convertedChunks.length; i += BATCH_SIZE) {
+      const batch = convertedChunks.slice(i, i + BATCH_SIZE);
       
-      const batchPromises = batch.map(async (chunk) => {
+      const batchPromises = batch.map(async (chunk, index) => {
+        const originalChunk = chunks[i + index];
+        
         const keywordScore = this.calculateKeywordScore(
           questionAnalysis.keywords,
-          chunk
+          originalChunk
         );
         
         const synonymScore = this.calculateSynonymScore(
           questionAnalysis.expandedKeywords || [],
-          chunk
+          originalChunk
         );
         
         let semanticScore = 0;
-        if (questionEmbedding && chunk.embedding) {
+        if (questionEmbedding && originalChunk.embedding) {
           semanticScore = this.calculateSemanticSimilarity(
             questionEmbedding,
-            chunk.embedding
+            originalChunk.embedding
           );
         }
         
@@ -229,7 +234,7 @@ export class UnifiedSearchEngine {
       results.push(...batchResults);
       
       if (i % 500 === 0) {
-        console.log(`  진행률: ${Math.min(i + BATCH_SIZE, chunks.length)}/${chunks.length}`);
+        console.log(`  진행률: ${Math.min(i + BATCH_SIZE, convertedChunks.length)}/${convertedChunks.length}`);
       }
     }
     
@@ -336,14 +341,56 @@ export class UnifiedSearchEngine {
   }
   
   /**
+   * PDFChunk를 Chunk로 변환
+   */
+  private async convertPDFChunksToChunks(pdfChunks: PDFChunk[]): Promise<Chunk[]> {
+    // documentId별로 그룹화하여 중복 조회 방지
+    const documentIds = [...new Set(pdfChunks.map(p => p.documentId))];
+    
+    // 모든 문서 정보 조회
+    const documents = await Promise.all(
+      documentIds.map(id => this.firestoreService.getDocumentById(id))
+    );
+    
+    // documentId -> PDFDocument 맵 생성
+    const docMap = new Map(documents.filter(d => d !== null).map(d => [d.id, d]));
+    
+    return pdfChunks.map(pdfChunk => {
+      const doc = docMap.get(pdfChunk.documentId);
+      
+      return {
+        id: pdfChunk.id || '',
+        content: pdfChunk.content,
+        metadata: {
+          source: pdfChunk.metadata.source || doc?.filename || 'Firestore',
+          title: pdfChunk.metadata.title || doc?.title || 'Unknown',
+          page: pdfChunk.metadata.page || 0,
+          section: pdfChunk.metadata.section || 'general',
+          position: pdfChunk.metadata.position || 0,
+          startPosition: pdfChunk.metadata.startPos || 0,
+          endPosition: pdfChunk.metadata.endPos || 0,
+          originalSize: pdfChunk.metadata.originalSize || 0,
+          documentType: pdfChunk.metadata.documentType
+        },
+        keywords: pdfChunk.keywords || [],
+        location: {
+          document: pdfChunk.location?.document || doc?.title || pdfChunk.documentId || 'Unknown',
+          section: pdfChunk.location?.section || pdfChunk.metadata.section || 'general',
+          page: pdfChunk.location?.page || pdfChunk.metadata.page || 0
+        }
+      };
+    });
+  }
+  
+  /**
    * 중복 제거 및 랭킹
    */
   private removeDuplicatesAndRank(
-    scoredChunks: ScoredChunk[],
+    scoredChunks: Array<{ chunk: Chunk; score: number; breakdown: any }>,
     maxChunks: number
-  ): ScoredChunk[] {
+  ): Array<{ chunk: Chunk; score: number; breakdown: any }> {
     // 중복 제거 (동일한 ID)
-    const uniqueMap = new Map<string, ScoredChunk>();
+    const uniqueMap = new Map<string, { chunk: Chunk; score: number; breakdown: any }>();
     
     scoredChunks.forEach(scored => {
       const existing = uniqueMap.get(scored.chunk.id || '');
