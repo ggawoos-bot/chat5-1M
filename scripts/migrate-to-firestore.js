@@ -332,80 +332,72 @@ async function saveChunksBatch(chunkDataList) {
   }
 }
 
-// ✅ 개선된 키워드 추출: 동의어 사전 + 기본 키워드
+// ✅ 범용적 키워드 추출: 모든 한글 단어 자동 추출 + 동의어 확장
 function extractKeywords(text) {
   const keywords = new Set();
   
-  // 기본 키워드 목록 (중요한 키워드)
-  const smokingKeywords = ['금연', '담배', '니코틴', '흡연', '금연구역', '건강증진'];
-  const legalKeywords = ['법령', '시행령', '시행규칙', '지침', '가이드라인', '규정', '조항'];
-  const facilityKeywords = [
-    '어린이집', '유치원', '보육시설', '보육원', '보육소',
-    '체육시설', '체육관', '운동장', '헬스장', '수영장',
-    '필로티', '공동주택', '아파트', '다세대주택',
-    '복도', '계단', '엘리베이터', '지하주차장', '주차장',
-    '학교', '병원', '문화시설', '도서관',
-    '공공장소', '공용공간'
-  ];
-  
-  const allKeywords = [...smokingKeywords, ...legalKeywords, ...facilityKeywords];
-  
-  // 1. 기본 키워드 체크
-  allKeywords.forEach(keyword => {
-    if (text.includes(keyword)) {
-      keywords.add(keyword);
+  // 1. 모든 한글 단어 자동 추출 (2-10글자)
+  const koreanWords = text.match(/[가-힣]{2,10}/g) || [];
+  koreanWords.forEach(word => {
+    // 일반적인 조사, 보조사 제외
+    if (!isCommonWord(word) && word.length >= 2 && word.length <= 10) {
+      keywords.add(word);
     }
   });
   
-  // 2. 동의어 사전을 사용하여 키워드 확장
-  if (synonymDictionary && typeof synonymDictionary === 'object') {
-    // "keywords" 배열에서 키워드 추출
-    const dictKeywords = synonymDictionary.keywords || [];
-    
-    if (Array.isArray(dictKeywords)) {
-      // 동의어 사전의 키워드 중 텍스트에 포함된 것들 추가
-      dictKeywords.forEach(dictKeyword => {
-        if (typeof dictKeyword === 'string' && text.includes(dictKeyword)) {
-          keywords.add(dictKeyword);
-        }
-      });
+  // 2. 영어 단어 추출 (시설명, 법령명 등)
+  const englishWords = text.match(/[A-Z][a-z]+/g) || [];
+  englishWords.forEach(word => {
+    if (word.length >= 3 && word.length <= 20) {
+      keywords.add(word);
     }
-    
-    // "synonymMappings" 객체가 있는 경우 역방향 검색
+  });
+  
+  // 3. 법령 조항 패턴 (제X조, 제X항 등)
+  const lawPatterns = text.match(/제[0-9]+조|제[0-9]+항|제[0-9]+호/g) || [];
+  lawPatterns.forEach(pattern => {
+    keywords.add(pattern);
+  });
+  
+  // 4. 동의어 사전 확장 (역방향 매핑)
+  if (synonymDictionary && typeof synonymDictionary === 'object') {
+    // synonymMappings에서 역방향 검색
     if (synonymDictionary.synonymMappings && typeof synonymDictionary.synonymMappings === 'object') {
       Object.keys(synonymDictionary.synonymMappings).forEach(baseKeyword => {
         const synonyms = synonymDictionary.synonymMappings[baseKeyword];
         if (Array.isArray(synonyms)) {
-          const hasAnySynonym = synonyms.some(syn => text.includes(syn));
-          if (hasAnySynonym) {
+          // 텍스트에 동의어가 있으면 기본 키워드와 동의어 모두 추가
+          const matchedSynonyms = synonyms.filter(syn => text.includes(syn));
+          if (matchedSynonyms.length > 0) {
             keywords.add(baseKeyword);
+            matchedSynonyms.forEach(syn => keywords.add(syn));
           }
         }
       });
     }
-  }
-  
-  // 3. 긴 텍스트의 경우 추가 키워드 추출 (한글 명사 추출)
-  if (text.length > 500) {
-    // 한글 명사 패턴 (2-4글자)
-    const nounPattern = /[가-힣]{2,4}/g;
-    const matches = text.match(nounPattern);
     
-    if (matches) {
-      matches.forEach(match => {
-        // 일반적인 단어(보조사, 조사 등) 제외
-        if (
-          match.length >= 2 &&
-          !match.match(/^(은|는|이|가|을|를|의|과|와|에|로|에서)$/) &&
-          !match.match(/^(및|또는|이다|것|등|밖)$/)
-        ) {
-          keywords.add(match);
+    // keywords 배열에서도 검색
+    if (synonymDictionary.keywords && Array.isArray(synonymDictionary.keywords)) {
+      synonymDictionary.keywords.forEach(dictKeyword => {
+        if (typeof dictKeyword === 'string' && text.includes(dictKeyword)) {
+          keywords.add(dictKeyword);
         }
       });
     }
   }
   
   return Array.from(keywords);
+}
+
+// 일반적인 단어 필터
+function isCommonWord(word) {
+  const commonWords = [
+    '은', '는', '이', '가', '을', '를', '의', '과', '와', '에', '로', '에서',
+    '및', '또는', '이다', '것', '등', '밖', '까지', '부터', '만', '도',
+    '것을', '것이', '것이', '것에', '것을', '것으로', '것에서는',
+    '년', '월', '일', '시', '분', '초'
+  ];
+  return commonWords.includes(word);
 }
 
 // 문서 타입 분류
