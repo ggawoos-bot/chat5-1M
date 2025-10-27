@@ -26,6 +26,9 @@ export class GeminiService {
   private sessionCreationCount: number = 0;
   private static readonly MAX_SESSION_CREATION_ATTEMPTS = 3;
   
+  // 🚨 중복 초기화 방지 플래그
+  private isInitializing: boolean = false;
+  
   // 고급 검색 품질 향상 서비스
   private advancedSearchService: AdvancedSearchQualityService;
   
@@ -587,10 +590,10 @@ Here is the source material:
     return this.switchToNextKey();
   }
 
-  // API 호출 시 RPD 기록
-  private recordApiCall(keyId: string): boolean {
+  // API 호출 시 RPD 기록 (비동기)
+  private async recordApiCall(keyId: string): Promise<boolean> {
     console.log(`RPD 기록 시도: ${keyId}`);
-    const result = rpdService.recordApiCall(keyId);
+    const result = await rpdService.recordApiCall(keyId);
     console.log(`RPD 기록 결과: ${result ? '성공' : '실패'}`);
     return result;
   }
@@ -657,12 +660,16 @@ Here is the source material:
     throw lastError;
   }
 
-  // 다음 사용 가능한 키 조회 (RPD 고려)
-  private getNextAvailableKeyWithRpd(): string | null {
-    // RPD에서 사용 가능한 키 확인
-    const rpdAvailableKey = rpdService.getNextAvailableKey();
-    if (rpdAvailableKey) {
-      return rpdAvailableKey;
+  // 다음 사용 가능한 키 조회 (RPD 고려) - 비동기
+  private async getNextAvailableKeyWithRpd(): Promise<string | null> {
+    try {
+      // RPD에서 사용 가능한 키 확인
+      const rpdAvailableKey = await rpdService.getNextAvailableKey();
+      if (rpdAvailableKey) {
+        return rpdAvailableKey;
+      }
+    } catch (error) {
+      console.warn('RPD 키 조회 실패:', error);
     }
 
     // RPD에서 사용 불가능하면 기존 로직 사용
@@ -1005,13 +1012,29 @@ Here is the source material:
 
   // PDF 내용을 Firestore에서 로드하고 압축하여 캐시 (Firestore 전용)
   async initializeWithPdfSources(): Promise<void> {
+    // 🚨 중복 초기화 방지
+    if (this.isInitializing) {
+      console.log('⏳ 초기화 진행 중... 대기');
+      // 진행 중인 초기화가 완료될 때까지 대기
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!this.isInitializing) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+    
     if (this.isInitialized && this.cachedSourceText) {
-      console.log('PDF sources already initialized');
+      console.log('✅ PDF sources already initialized');
       return;
     }
 
+    this.isInitializing = true;
+    
     try {
-      console.log('Initializing PDF sources...');
+      console.log('🚀 Initializing PDF sources...');
       
       // 0. 소스 목록을 동적으로 로드
       await this.loadDefaultSources();
@@ -1047,12 +1070,12 @@ Here is the source material:
         console.log('Recommendations:', validation.recommendations);
       }
       
-      console.log('PDF sources initialized, chunked, and compressed successfully');
+      console.log('✅ PDF sources initialized, chunked, and compressed successfully');
     } catch (error) {
-      console.error('Failed to initialize PDF sources:', error);
+      console.error('❌ Failed to initialize PDF sources:', error);
       
       // 폴백: 기본 소스 사용
-      console.log('Falling back to default sources...');
+      console.log('⚠️ Falling back to default sources...');
       this.cachedSourceText = this.sources.length > 0 
         ? this.sources.map(source => `[${source.title}]\n${source.content}`).join('\n\n')
         : 'PDF 로딩에 실패했습니다. 기본 모드로 실행됩니다.';
@@ -1105,6 +1128,10 @@ Here is the source material:
       };
       
       console.log('Fallback initialization completed');
+    } finally {
+      // 🚨 초기화 완료 후 플래그 해제
+      this.isInitializing = false;
+      console.log('✅ PDF initialization completed');
     }
   }
 
@@ -1665,7 +1692,7 @@ Here is the source material:
       
       console.log(`API 키 상태 - currentKeyIndex: ${GeminiService.currentKeyIndex}, selectedKeyIndex: ${selectedKeyIndex}`);
       console.log(`사용된 키 인덱스: ${actualKeyIndex}, RPD 키 ID: ${currentKeyId}`);
-      this.recordApiCall(currentKeyId);
+      await this.recordApiCall(currentKeyId);
 
       this.currentChatSession = chat;
       console.log(`✅ 세션 생성 완료 (시도 ${this.sessionCreationCount}/${GeminiService.MAX_SESSION_CREATION_ATTEMPTS})`);
@@ -2146,9 +2173,9 @@ Here is the source material:
     await this.initializeWithPdfSources();
   }
 
-  // RPD 통계 조회
-  getRpdStats() {
-    return rpdService.getRpdStats();
+  // RPD 통계 조회 (비동기)
+  async getRpdStats() {
+    return await rpdService.getRpdStats();
   }
 }
 

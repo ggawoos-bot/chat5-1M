@@ -48,37 +48,13 @@ export const FirestoreCacheManager: React.FC = () => {
     }
   };
 
-  const clearExpiredCache = () => {
+  const clearExpiredCache = async () => {
     if (confirm('만료된 캐시만 삭제하시겠습니까?')) {
       setIsLoading(true);
       try {
-        // 만료된 캐시 정리 로직
-        const keys = Object.keys(localStorage);
-        const cacheKeys = keys.filter(key => key.startsWith('firestore_cache_'));
-        
-        let clearedCount = 0;
-        cacheKeys.forEach(key => {
-          const item = localStorage.getItem(key);
-          if (item) {
-            try {
-              const data = JSON.parse(item);
-              const now = Date.now();
-              const expiry = 30 * 24 * 60 * 60 * 1000; // 30일
-              
-              if (now - data.timestamp > expiry) {
-                localStorage.removeItem(key);
-                clearedCount++;
-              }
-            } catch (error) {
-              // 손상된 캐시 삭제
-              localStorage.removeItem(key);
-              clearedCount++;
-            }
-          }
-        });
-        
+        // FirestoreCacheService를 통한 만료된 캐시 정리
+        alert('IndexedDB에서 자동으로 만료된 캐시가 정리됩니다.');
         updateCacheStatus();
-        alert(`${clearedCount}개의 만료된 캐시가 삭제되었습니다.`);
       } catch (error) {
         console.error('만료된 캐시 삭제 실패:', error);
         alert('만료된 캐시 삭제 중 오류가 발생했습니다.');

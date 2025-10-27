@@ -1,4 +1,4 @@
-// RPD (Requests Per Day) 관리 서비스 - 보안 강화 버전
+// RPD (Requests Per Day) 관리 서비스 - IndexedDB 버전
 export interface ApiKeyRpdInfo {
   keyId: string;
   keyName: string;
@@ -18,7 +18,10 @@ export interface RpdStats {
 }
 
 class RpdService {
-  private readonly STORAGE_KEY = 'gemini_rpd_stats';
+  private readonly DB_NAME = 'RpdDB';
+  private readonly DB_VERSION = 1;
+  private readonly STORE_NAME = 'rpd_stats';
+  private db: IDBDatabase | null = null;
   private readonly MAX_RPD_PER_KEY = 250; // 각 키당 250회
   private readonly TOTAL_MAX_RPD = 750; // 250 * 3 = 750 (3개 키 합계)
 
@@ -33,26 +36,71 @@ class RpdService {
     return new Date().toISOString().split('T')[0];
   }
 
-  // 로컬 스토리지에서 RPD 데이터 로드
-  private loadRpdData(): RpdStats {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        // 날짜가 바뀌었으면 리셋
-        if (data.resetTime !== this.getTodayString()) {
-          return this.resetRpdData();
+  // IndexedDB 초기화
+  private async initDB(): Promise<IDBDatabase> {
+    if (this.db) return this.db;
+
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+      request.onerror = () => {
+        console.error('IndexedDB 초기화 실패:', request.error);
+        reject(request.error);
+      };
+
+      request.onsuccess = () => {
+        this.db = request.result;
+        console.log('✅ RPD IndexedDB 초기화 완료');
+        resolve(this.db);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'id' });
+          store.createIndex('timestamp', 'timestamp', { unique: false });
         }
-        return data;
-      }
-    } catch (error) {
-      console.error('RPD 데이터 로드 실패:', error);
-    }
-    return this.resetRpdData();
+      };
+    });
   }
 
-  // RPD 데이터 리셋 (새로운 날)
-  private resetRpdData(): RpdStats {
+  // IndexedDB에서 RPD 데이터 로드
+  private async loadRpdData(): Promise<RpdStats> {
+    try {
+      const db = await this.initDB();
+      const transaction = db.transaction([this.STORE_NAME], 'readonly');
+      const store = transaction.objectStore(this.STORE_NAME);
+      
+      return new Promise<RpdStats>((resolve, reject) => {
+        const request = store.get('current');
+        
+        request.onsuccess = () => {
+          const data = request.result?.data;
+          if (data) {
+            // 날짜가 바뀌었으면 리셋
+            if (data.resetTime !== this.getTodayString()) {
+              this.resetRpdDataAsync().then(resolve).catch(reject);
+            } else {
+              resolve(data);
+            }
+          } else {
+            this.resetRpdDataAsync().then(resolve).catch(reject);
+          }
+        };
+        
+        request.onerror = () => {
+          console.error('RPD 데이터 로드 실패:', request.error);
+          this.resetRpdDataAsync().then(resolve).catch(reject);
+        };
+      });
+    } catch (error) {
+      console.error('RPD 데이터 로드 실패:', error);
+      return this.resetRpdDataAsync();
+    }
+  }
+
+  // RPD 데이터 리셋 (새로운 날) - 비동기 버전
+  private async resetRpdDataAsync(): Promise<RpdStats> {
     const today = this.getTodayString();
     const data: RpdStats = {
       totalUsed: 0,
@@ -89,22 +137,39 @@ class RpdService {
         }
       ]
     };
-    this.saveRpdData(data);
+    await this.saveRpdData(data);
     console.log('RPD 데이터 리셋 완료:', data);
     return data;
   }
 
-  // RPD 데이터 저장
-  private saveRpdData(data: RpdStats): void {
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.error('RPD 데이터 저장 실패:', error);
-    }
+  // RPD 데이터 저장 (IndexedDB)
+  private async saveRpdData(data: RpdStats): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const db = await this.initDB();
+        const transaction = db.transaction([this.STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(this.STORE_NAME);
+        
+        const request = store.put({ id: 'current', data, timestamp: Date.now() });
+        
+        request.onsuccess = () => {
+          console.log('✅ RPD 데이터 IndexedDB 저장 완료');
+          resolve();
+        };
+        
+        request.onerror = () => {
+          console.error('RPD 데이터 저장 실패:', request.error);
+          reject(request.error);
+        };
+      } catch (error) {
+        console.error('RPD 데이터 저장 실패:', error);
+        reject(error);
+      }
+    });
   }
 
-  // API 키 사용 기록
-  recordApiCall(keyId: string): boolean {
+  // API 키 사용 기록 (비동기)
+  async recordApiCall(keyId: string): Promise<boolean> {
     try {
       // keyId 유효성 검증
       if (!keyId || typeof keyId !== 'string') {
@@ -142,7 +207,7 @@ class RpdService {
       data.totalUsed++;
       data.remaining = data.totalMax - data.totalUsed;
 
-      this.saveRpdData(data);
+      await this.saveRpdData(data);
       console.log(`API 키 ${keyId} 사용 기록: ${keyInfo.usedToday}/${keyInfo.maxPerDay}`);
       return true;
     } catch (error) {
@@ -151,28 +216,28 @@ class RpdService {
     }
   }
 
-  // RPD 통계 조회
-  getRpdStats(): RpdStats {
-    return this.loadRpdData();
+  // RPD 통계 조회 (비동기)
+  async getRpdStats(): Promise<RpdStats> {
+    return await this.loadRpdData();
   }
 
-  // 특정 키 비활성화/활성화
-  toggleKeyStatus(keyId: string): boolean {
-    const data = this.loadRpdData();
+  // 특정 키 비활성화/활성화 (비동기)
+  async toggleKeyStatus(keyId: string): Promise<boolean> {
+    const data = await this.loadRpdData();
     const keyInfo = data.apiKeys.find(key => key.keyId === keyId);
     
     if (keyInfo) {
       keyInfo.isActive = !keyInfo.isActive;
-      this.saveRpdData(data);
+      await this.saveRpdData(data);
       return true;
     }
     return false;
   }
 
-  // 다음 사용 가능한 키 조회
-  getNextAvailableKey(): string | null {
+  // 다음 사용 가능한 키 조회 (비동기)
+  async getNextAvailableKey(): Promise<string | null> {
     try {
-      const data = this.loadRpdData();
+      const data = await this.loadRpdData();
       
       // 데이터 유효성 검증
       if (!data || !Array.isArray(data.apiKeys) || data.apiKeys.length === 0) {
@@ -230,10 +295,9 @@ class RpdService {
   }
 
   // RPD 데이터 강제 리셋 (디버깅용)
-  forceResetRpdData(): void {
+  async forceResetRpdData(): Promise<void> {
     console.log('RPD 데이터 강제 리셋 중...');
-    localStorage.removeItem(this.STORAGE_KEY);
-    this.resetRpdData();
+    await this.resetRpdDataAsync();
   }
 }
 
