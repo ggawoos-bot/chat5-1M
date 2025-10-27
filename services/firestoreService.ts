@@ -254,15 +254,15 @@ export class FirestoreService {
     documentId?: string, 
     limitCount: number = 10
   ): Promise<PDFChunk[]> {
-    // 단순한 쿼리로 변경 (인덱스 문제 해결)
+    // ✅ 개선: 충분한 수량 조회
     let q = query(
       collection(db, this.chunksCollection),
-      limit(limitCount * 2) // 더 많이 가져와서 필터링
+      limit(1000)
     );
 
     const snapshot = await getDocs(q);
-    const chunks: PDFChunk[] = [];
-    const lowerSearchText = searchText.toLowerCase();
+    const chunksWithScore: Array<{chunk: PDFChunk, score: number}> = [];
+    const searchTextLower = searchText.toLowerCase();
     
     snapshot.forEach((doc) => {
       const data = doc.data() as PDFChunk;
@@ -272,22 +272,52 @@ export class FirestoreService {
         return;
       }
       
-      // 텍스트 매칭 확인
-      const contentMatch = data.content.toLowerCase().includes(lowerSearchText);
-      const searchableTextMatch = data.searchableText && 
-        data.searchableText.toLowerCase().includes(lowerSearchText);
+      // ✅ 개선: 텍스트 매칭 점수 계산
+      let score = 0;
       
-      if (contentMatch || searchableTextMatch) {
-        chunks.push({
-          id: doc.id,
-          ...data
+      // searchableText에서 검색
+      if (data.searchableText && data.searchableText.toLowerCase().includes(searchTextLower)) {
+        score += 5;
+        
+        // 정확한 텍스트 매칭 확인
+        const searchableTextLower = data.searchableText.toLowerCase();
+        if (searchableTextLower.includes(searchTextLower)) {
+          score += 3;
+        }
+      }
+      
+      // content에서도 검색
+      if (data.content && data.content.toLowerCase().includes(searchTextLower)) {
+        score += 2;
+      }
+      
+      // keywords에서도 검색
+      if (data.keywords) {
+        data.keywords.forEach(k => {
+          if (k.toLowerCase().includes(searchTextLower)) {
+            score += 1;
+          }
+        });
+      }
+      
+      if (score > 0) {
+        chunksWithScore.push({
+          chunk: {
+            id: doc.id,
+            ...data
+          },
+          score
         });
       }
     });
 
-    // 결과 제한
-    const limitedChunks = chunks.slice(0, limitCount);
-    console.log(`✅ Firestore 텍스트 검색 완료: ${limitedChunks.length}개 청크 발견`);
+    // ✅ 관련성 점수 순으로 정렬
+    chunksWithScore.sort((a, b) => b.score - a.score);
+    
+    const sortedChunks = chunksWithScore.map(item => item.chunk);
+    const limitedChunks = sortedChunks.slice(0, limitCount);
+    
+    console.log(`✅ Firestore 텍스트 검색 완료: ${limitedChunks.length}개 청크 발견 (전체 ${sortedChunks.length}개 중, 최고 점수: ${chunksWithScore[0]?.score.toFixed(2) || 0})`);
     return limitedChunks;
   }
 
